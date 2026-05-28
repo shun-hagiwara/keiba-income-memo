@@ -16,19 +16,31 @@
   </head>
   <body>
     <header class="app-header">
-      <!-- 馬シルエット背景SVG -->
       <div class="header-bg-horse" aria-hidden="true">
-        <svg viewBox="0 0 320 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M30 70 Q50 30 90 50 Q120 60 140 40 Q160 20 200 40 Q240 60 270 30 Q300 10 310 70" stroke="#223a5e" stroke-width="6" fill="none" opacity="0.10"/>
-          <path d="M60 60 Q70 40 90 50 Q110 60 120 40" stroke="#223a5e" stroke-width="3" fill="none" opacity="0.13"/>
-          <ellipse cx="60" cy="65" rx="7" ry="4" fill="#223a5e" opacity="0.08"/>
+        <svg viewBox="0 0 520 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g opacity="0.48">
+            <path d="M20 118 C42 64 88 54 112 78 C132 98 149 96 170 82 C188 68 215 56 246 72 C280 88 307 68 332 82 C356 96 384 96 406 74 C424 58 448 54 478 74" stroke="#d9f1f4" stroke-width="4" fill="none"/>
+            <path d="M106 104 C120 88 136 84 150 96" stroke="#d9f1f4" stroke-width="3" fill="none"/>
+            <path d="M176 96 C192 76 212 70 232 82" stroke="#d9f1f4" stroke-width="3" fill="none"/>
+            <path d="M258 88 C274 72 296 66 316 78" stroke="#d9f1f4" stroke-width="3" fill="none"/>
+            <circle cx="142" cy="118" r="6" fill="#d9f1f4" opacity="0.7"/>
+            <circle cx="244" cy="112" r="6" fill="#d9f1f4" opacity="0.62"/>
+            <circle cx="352" cy="116" r="8" fill="#d9f1f4" opacity="0.55"/>
+          </g>
         </svg>
       </div>
-      <div>
-        <p class="eyebrow">SPAT4 screenshot import</p>
-        <h1>競馬収支メモ <span class="horse-icon" aria-label="馬アイコン">🐎</span></h1>
+      <div class="header-copy">
+        <p class="eyebrow">SPAT4 SCREENSHOT IMPORT</p>
+        <h1>競馬収支メモ</h1>
+        <p class="hero-copy">スクリーンショットから収支を読み取り、日別・月別の成績をまとめるダッシュボード。</p>
       </div>
-      <div class="privacy-badge">画像はブラウザ内で処理</div>
+      <div class="header-meta">
+        <div class="status-badge">☑ ローカル保存</div>
+        <div class="privacy-badge">画像はブラウザ内で処理</div>
+      </div>
+      <div class="header-art" aria-hidden="true">
+        <img src="./assets/horse-hero.png" alt="">
+      </div>
     </header>
 
     <main class="app-shell">
@@ -39,9 +51,12 @@
         </div>
 
         <label class="drop-zone" for="image-input">
-          <span class="drop-icon">+</span>
-          <span class="drop-main">画像を選択</span>
-          <span class="drop-sub">iPhoneはフォトライブラリからスクリーンショットを選択。複数枚も選べます。</span>
+          <div class="drop-zone-inner">
+            <span class="drop-icon">↗</span>
+            <span class="drop-main">画像をアップロード</span>
+            <span class="drop-sub">iPhone SafariでもHEIC/HEIFを含めて選択できます。複数枚もまとめて読取可能です。</span>
+            <span class="drop-tags">SPAT4 · OCR · 画像付き保存</span>
+          </div>
           <input id="image-input" type="file" accept="image/*,.heic,.heif" multiple>
         </label>
 
@@ -59,8 +74,8 @@
         </div>
 
         <div class="actions">
-          <button id="run-ocr" type="button" disabled>OCRする</button>
-          <button id="parse-text" type="button" disabled>読み取り結果を反映</button>
+          <button id="run-ocr" type="button" class="primary" disabled>OCRする</button>
+          <button id="parse-text" type="button" class="primary" disabled>読み取り結果を反映</button>
           <button id="save-candidates" type="button" class="secondary" disabled>候補を一括保存</button>
           <button id="clear-image" type="button" class="secondary" disabled>画像をクリア</button>
         </div>
@@ -177,25 +192,41 @@
       </section>
 
       <section class="panel dashboard" aria-labelledby="summary-title">
-        <div class="section-heading">
-          <h2 id="summary-title">収支サマリー <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
+        <div class="section-heading dashboard-heading">
+          <div>
+            <p class="eyebrow">LIVE FINANCIAL SNAPSHOT</p>
+            <h2 id="summary-title">収支サマリー <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
+          </div>
+          <p class="dashboard-note">保存済みデータから即時集計</p>
         </div>
         <div class="metric-grid">
-          <div class="metric">
-            <span>購入</span>
-            <strong id="total-stake">0円</strong>
+          <div class="metric stat-card">
+            <div class="metric-icon">💸</div>
+            <div>
+              <span>購入</span>
+              <strong id="total-stake">0円</strong>
+            </div>
           </div>
-          <div class="metric">
-            <span>払戻+返還</span>
-            <strong id="total-return">0円</strong>
+          <div class="metric stat-card">
+            <div class="metric-icon">🧾</div>
+            <div>
+              <span>払戻+返還</span>
+              <strong id="total-return">0円</strong>
+            </div>
           </div>
-          <div class="metric">
-            <span>収支</span>
-            <strong id="total-profit">0円</strong>
+          <div class="metric stat-card positive-stat" id="profit-card">
+            <div class="metric-icon">📈</div>
+            <div>
+              <span>収支</span>
+              <strong id="total-profit">0円</strong>
+            </div>
           </div>
-          <div class="metric">
-            <span>回収率</span>
-            <strong id="total-roi">0%</strong>
+          <div class="metric stat-card">
+            <div class="metric-icon">⚡</div>
+            <div>
+              <span>回収率</span>
+              <strong id="total-roi">0%</strong>
+            </div>
           </div>
         </div>
       </section>
