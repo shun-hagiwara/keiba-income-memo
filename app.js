@@ -697,6 +697,23 @@ function updateComputed() {
   $("roi").textContent = `${Math.round(roiOf(entry) * 10) / 10}%`;
 }
 
+function updateOcrBatchProgress(done, total, { running = false } = {}) {
+  const safeTotal = Math.max(0, Number(total || 0));
+  const safeDone = Math.min(Math.max(0, Number(done || 0)), safeTotal);
+  const percent = safeTotal ? Math.round((safeDone / safeTotal) * 100) : 0;
+  const fill = $("ocr-batch-fill");
+  const horse = $("ocr-batch-horse");
+  const count = $("ocr-batch-count");
+  const percentLabel = $("ocr-batch-percent");
+  const progress = document.querySelector(".ocr-race-progress");
+
+  if (fill) fill.style.width = `${percent}%`;
+  if (horse) horse.style.left = `${percent}%`;
+  if (count) count.textContent = `${safeDone}/${safeTotal}枚`;
+  if (percentLabel) percentLabel.textContent = `${percent}%`;
+  if (progress) progress.classList.toggle("is-running", running && safeTotal > 0 && safeDone < safeTotal);
+}
+
 function renderHistory() {
   const body = $("history-body");
   body.textContent = "";
@@ -875,7 +892,8 @@ async function runOcr() {
   }
 
   $("ocr-status").textContent = "OCR準備中";
-  $("ocr-progress").textContent = "";
+  $("ocr-progress").textContent = `0/${state.imageFiles.length}枚`;
+  updateOcrBatchProgress(0, state.imageFiles.length, { running: true });
   $("run-ocr").disabled = true;
   state.candidates = [];
   renderCandidates();
@@ -883,16 +901,16 @@ async function runOcr() {
   const worker = await ocrEngine.createWorker("jpn+eng", 1, {
     logger: (message) => {
       if (message.status) $("ocr-status").textContent = message.status;
-      if (typeof message.progress === "number") {
-        $("ocr-progress").textContent = `${Math.round(message.progress * 100)}%`;
-      }
     }
   });
 
+  let completedImages = 0;
   try {
     const rawTexts = [];
     for (const [index, file] of state.imageFiles.entries()) {
       $("ocr-status").textContent = `OCR中 ${index + 1}/${state.imageFiles.length}`;
+      $("ocr-progress").textContent = `${index}/${state.imageFiles.length}枚完了`;
+      updateOcrBatchProgress(index, state.imageFiles.length, { running: true });
       const result = await worker.recognize(file);
       const text = normalizeText(result.data.text);
       rawTexts.push(`--- ${file.name || `${index + 1}枚目`} ---\n${text}`);
@@ -906,16 +924,22 @@ async function runOcr() {
         rawText: text
       }));
       state.candidates.push(...entries);
+      const completed = index + 1;
+      completedImages = completed;
+      $("ocr-progress").textContent = `${completed}/${state.imageFiles.length}枚完了`;
+      updateOcrBatchProgress(completed, state.imageFiles.length, { running: completed < state.imageFiles.length });
     }
     $("ocr-text").value = rawTexts.join("\n\n");
     $("ocr-status").textContent = "OCR完了";
-    $("ocr-progress").textContent = "";
+    $("ocr-progress").textContent = `${state.imageFiles.length}/${state.imageFiles.length}枚完了`;
+    updateOcrBatchProgress(state.imageFiles.length, state.imageFiles.length, { running: false });
     $("parse-text").disabled = false;
     renderCandidates();
     if (state.candidates[0]) applyParsedEntry(state.candidates[0]);
   } catch (error) {
     $("ocr-status").textContent = "OCRに失敗しました。手入力または再試行してください。";
-    $("ocr-progress").textContent = "";
+    $("ocr-progress").textContent = `${completedImages}/${state.imageFiles.length}枚完了で停止`;
+    updateOcrBatchProgress(completedImages, state.imageFiles.length, { running: false });
     console.error(error);
   } finally {
     await worker.terminate();
@@ -934,6 +958,7 @@ function resetImage() {
   $("ocr-text").value = "";
   $("ocr-status").textContent = "画像未選択";
   $("ocr-progress").textContent = "";
+  updateOcrBatchProgress(0, 0, { running: false });
   $("run-ocr").disabled = true;
   $("parse-text").disabled = true;
   $("save-candidates").disabled = true;
@@ -1347,7 +1372,8 @@ async function handleImageSelection(event) {
     }
 
     $("ocr-status").textContent = `${statusMessages.join(" / ")} / ${acceptedFiles.length}枚選択済み`;
-    $("ocr-progress").textContent = "";
+    $("ocr-progress").textContent = `0/${acceptedFiles.length}枚`;
+    updateOcrBatchProgress(0, acceptedFiles.length, { running: false });
     $("run-ocr").disabled = false;
     $("parse-text").disabled = true;
     $("clear-image").disabled = false;
@@ -1363,6 +1389,7 @@ async function handleImageSelection(event) {
   $("image-preview").style.display = "none";
   $("ocr-status").textContent = statusMessages.join(" / ");
   $("ocr-progress").textContent = "";
+  updateOcrBatchProgress(0, 0, { running: false });
   $("run-ocr").disabled = true;
   $("parse-text").disabled = true;
   $("clear-image").disabled = true;
@@ -1520,6 +1547,7 @@ function initializeHeaderMotion() {
 renderHistory();
 renderCandidates();
 updateComputed();
+updateOcrBatchProgress(0, 0, { running: false });
 setDriveUiState();
 setDriveStatus("Google Drive連携は未接続です。Googleログインしてください。");
 window.addEventListener("load", initializeGoogleDrive);

@@ -73,6 +73,16 @@
               <span id="ocr-status" role="status" aria-live="polite">画像未選択</span>
               <span id="ocr-progress"></span>
             </div>
+            <div class="ocr-race-progress" aria-label="OCR全体進捗">
+              <div class="ocr-race-track">
+                <div id="ocr-batch-fill" class="ocr-race-fill"></div>
+                <span id="ocr-batch-horse" class="ocr-race-horse" aria-hidden="true">🐎</span>
+              </div>
+              <div class="ocr-race-meta">
+                <span id="ocr-batch-count">0/0枚</span>
+                <strong id="ocr-batch-percent">0%</strong>
+              </div>
+            </div>
             <textarea id="ocr-text" spellcheck="false" placeholder="OCR結果がここに表示されます。必要なら直接修正できます。"></textarea>
           </div>
         </div>
