@@ -1459,11 +1459,70 @@ function setPeriodMode(mode) {
   renderPeriodSummary();
 }
 
+function initializeHeaderMotion() {
+  const header = document.querySelector(".app-header");
+  if (!header || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  let targetX = 0;
+  let targetY = 0;
+  let targetRotate = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let currentRotate = 0;
+  let frameRequested = false;
+
+  const render = () => {
+    frameRequested = false;
+    currentX += (targetX - currentX) * 0.12;
+    currentY += (targetY - currentY) * 0.12;
+    currentRotate += (targetRotate - currentRotate) * 0.12;
+    header.style.setProperty("--hero-x", `${currentX.toFixed(2)}px`);
+    header.style.setProperty("--hero-y", `${currentY.toFixed(2)}px`);
+    header.style.setProperty("--hero-rotate", `${currentRotate.toFixed(3)}deg`);
+
+    if (Math.abs(targetX - currentX) > 0.2 || Math.abs(targetY - currentY) > 0.2 || Math.abs(targetRotate - currentRotate) > 0.02) {
+      window.requestAnimationFrame(render);
+      frameRequested = true;
+    }
+  };
+
+  const schedule = () => {
+    if (!frameRequested) {
+      frameRequested = true;
+      window.requestAnimationFrame(render);
+    }
+  };
+
+  header.addEventListener("pointermove", (event) => {
+    const rect = header.getBoundingClientRect();
+    const xRatio = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+    const yRatio = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+    targetX = Math.max(-1, Math.min(1, xRatio)) * 10;
+    targetY = Math.max(-1, Math.min(1, yRatio)) * 6;
+    targetRotate = Math.max(-1, Math.min(1, xRatio)) * 1.8;
+    schedule();
+  }, { passive: true });
+
+  header.addEventListener("pointerleave", () => {
+    targetX = 0;
+    targetY = 0;
+    targetRotate = 0;
+    schedule();
+  });
+
+  window.addEventListener("scroll", () => {
+    const offset = Math.min(18, window.scrollY * 0.04);
+    targetY = -offset;
+    schedule();
+  }, { passive: true });
+}
+
 renderHistory();
 renderCandidates();
 updateComputed();
 setDriveUiState();
 setDriveStatus("Google Drive連携は未接続です。Googleログインしてください。");
 window.addEventListener("load", initializeGoogleDrive);
+window.addEventListener("load", initializeHeaderMotion);
 
 globalThis.keibaMemoParser = { parseSpat4Text, parseSpat4Entries, parseTextToCandidates };
