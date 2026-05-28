@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'"
+    >
+    <title>競馬収支メモ</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script type="module" src="./app.js?v=20260528-6"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">SPAT4 screenshot import</p>
+        <h1>競馬収支メモ</h1>
+      </div>
+      <div class="privacy-badge">画像はブラウザ内で処理</div>
+    </header>
+
+    <main class="app-shell">
+      <section class="panel import-panel" aria-labelledby="import-title">
+        <div class="section-heading">
+          <h2 id="import-title">画像取り込み</h2>
+          <p>SPAT4スマホ版の投票内容照会スクリーンショットを選択してください。</p>
+        </div>
+
+        <label class="drop-zone" for="image-input">
+          <span class="drop-icon">+</span>
+          <span class="drop-main">画像を選択</span>
+          <span class="drop-sub">iPhoneはフォトライブラリからスクリーンショットを選択。複数枚も選べます。</span>
+          <input id="image-input" type="file" accept="image/*" multiple>
+        </label>
+
+        <div class="preview-grid">
+          <div class="image-preview-wrap">
+            <img id="image-preview" alt="選択したスクリーンショットのプレビュー">
+          </div>
+          <div class="ocr-box">
+            <div class="ocr-status-row">
+              <span id="ocr-status">画像未選択</span>
+              <span id="ocr-progress"></span>
+            </div>
+            <textarea id="ocr-text" spellcheck="false" placeholder="OCR結果がここに表示されます。必要なら直接修正できます。"></textarea>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="run-ocr" type="button" disabled>OCRする</button>
+          <button id="parse-text" type="button" disabled>読み取り結果を反映</button>
+          <button id="save-candidates" type="button" class="secondary" disabled>候補を一括保存</button>
+          <button id="clear-image" type="button" class="secondary" disabled>画像をクリア</button>
+        </div>
+
+        <div id="candidate-area" class="candidate-area" hidden>
+          <div class="section-heading compact-heading">
+            <h3>読み取り候補</h3>
+            <p>複数画像をOCRした場合は、保存前に候補を確認してください。</p>
+          </div>
+          <div class="table-wrap">
+            <table class="candidate-table">
+              <thead>
+                <tr>
+                  <th>画像</th>
+                  <th>日付</th>
+                  <th>レース</th>
+                  <th>かけ方</th>
+                  <th>購入</th>
+                  <th>払戻</th>
+                  <th>収支</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="candidate-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="form-title">
+        <div class="section-heading">
+          <h2 id="form-title">1件編集</h2>
+          <p>複数アップロード時は上の候補一覧を使います。ここは候補を1件だけ修正して保存するための編集欄です。</p>
+        </div>
+
+        <form id="entry-form" class="entry-form">
+          <label>
+            <span>サービス</span>
+            <select id="service">
+              <option value="SPAT4">SPAT4</option>
+              <option value="IPAT" disabled>IPAT/JRAは後続対応</option>
+            </select>
+          </label>
+          <label>
+            <span>受付番号</span>
+            <input id="receipt-number" type="text" inputmode="numeric" autocomplete="off">
+          </label>
+          <label>
+            <span>受付日時</span>
+            <input id="accepted-at" type="datetime-local">
+          </label>
+          <label>
+            <span>開催日</span>
+            <input id="race-date" type="date">
+          </label>
+          <label>
+            <span>競馬場</span>
+            <input id="track" type="text" autocomplete="off">
+          </label>
+          <label>
+            <span>レース</span>
+            <input id="race-number" type="text" placeholder="7R" autocomplete="off">
+          </label>
+          <label>
+            <span>式別</span>
+            <input id="bet-type" type="text" placeholder="複勝" autocomplete="off">
+          </label>
+          <label>
+            <span>買い目</span>
+            <input id="selection" type="text" placeholder="4" autocomplete="off">
+          </label>
+          <label>
+            <span>投票種別</span>
+            <input id="ticket-type" type="text" placeholder="通常" autocomplete="off">
+          </label>
+          <label>
+            <span>購入金額</span>
+            <input id="stake" type="number" min="0" step="100" inputmode="numeric">
+          </label>
+          <label>
+            <span>払戻金額</span>
+            <input id="payout" type="number" min="0" step="10" inputmode="numeric">
+          </label>
+          <label>
+            <span>返還金額</span>
+            <input id="refund" type="number" min="0" step="10" inputmode="numeric">
+          </label>
+          <label class="wide">
+            <span>メモ</span>
+            <input id="memo" type="text" autocomplete="off">
+          </label>
+          <input id="source-name" type="hidden">
+          <input id="source-index" type="hidden">
+          <input id="source-image-name" type="hidden">
+          <input id="source-image-type" type="hidden">
+          <textarea id="source-raw-text" hidden></textarea>
+
+          <div class="summary-strip wide">
+            <div>
+              <span>収支</span>
+              <strong id="profit">0円</strong>
+            </div>
+            <div>
+              <span>回収率</span>
+              <strong id="roi">0%</strong>
+            </div>
+          </div>
+
+          <div class="actions wide">
+            <button id="save-entry" type="submit">保存</button>
+            <button id="reset-form" type="button" class="secondary">フォームをリセット</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel dashboard" aria-labelledby="summary-title">
+        <div class="section-heading">
+          <h2 id="summary-title">収支サマリー</h2>
+        </div>
+        <div class="metric-grid">
+          <div class="metric">
+            <span>購入</span>
+            <strong id="total-stake">0円</strong>
+          </div>
+          <div class="metric">
+            <span>払戻+返還</span>
+            <strong id="total-return">0円</strong>
+          </div>
+          <div class="metric">
+            <span>収支</span>
+            <strong id="total-profit">0円</strong>
+          </div>
+          <div class="metric">
+            <span>回収率</span>
+            <strong id="total-roi">0%</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="period-title">
+        <div class="section-heading history-heading">
+          <div>
+            <h2 id="period-title">期間別収支</h2>
+            <p>保存済み履歴を日別・月別・年別に集計します。</p>
+          </div>
+          <div class="segmented-control" role="group" aria-label="集計単位">
+            <button id="period-day" type="button" class="segment active" data-period="day">日</button>
+            <button id="period-month" type="button" class="segment" data-period="month">月</button>
+            <button id="period-year" type="button" class="segment" data-period="year">年</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="period-table">
+            <thead>
+              <tr>
+                <th>期間</th>
+                <th>件数</th>
+                <th>購入</th>
+                <th>払戻+返還</th>
+                <th>収支</th>
+                <th>回収率</th>
+              </tr>
+            </thead>
+            <tbody id="period-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="history-title">
+        <div class="section-heading history-heading">
+          <div>
+            <h2 id="history-title">履歴</h2>
+            <p>保存データはこのブラウザ内に保存されます。</p>
+          </div>
+          <div>
+            <button id="export-json" type="button" class="secondary">JSON出力</button>
+            <button id="export-archive" type="button" class="secondary">画像付き出力</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>レース</th>
+                <th>かけ方</th>
+                <th>購入</th>
+                <th>払戻</th>
+                <th>収支</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
