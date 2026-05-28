@@ -27,6 +27,7 @@ const GOOGLE_DRIVE_CLIENT_ID = "449273134542-vii1h2mtrrk29n0sp97s7tfh3m1uuhfe.ap
 const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GOOGLE_DRIVE_FOLDER_NAME = "KeibaMemo";
 const GOOGLE_DRIVE_FILE_NAME = "records.json";
+const GOOGLE_DRIVE_AUTH_KEY = "keiba-drive-auth-v1";
 
 const state = {
   imageFiles: [],
@@ -37,11 +38,13 @@ const state = {
   periodMode: "day",
   drive: {
     accessToken: "",
+    tokenExpiresAt: 0,
     folderId: "",
     fileId: "",
     tokenClient: null,
     initialized: false,
-    initAttempts: 0
+    initAttempts: 0,
+    pendingTokenRequest: null
   }
 };
 
@@ -99,6 +102,58 @@ function setDriveUiState() {
   }
   if (saveButton) saveButton.disabled = !state.drive.accessToken;
   if (loadButton) loadButton.disabled = !state.drive.accessToken;
+}
+
+function saveDriveAuthState() {
+  if (!state.drive.accessToken) {
+    localStorage.removeItem(GOOGLE_DRIVE_AUTH_KEY);
+    return;
+  }
+
+  localStorage.setItem(GOOGLE_DRIVE_AUTH_KEY, JSON.stringify({
+    accessToken: state.drive.accessToken,
+    tokenExpiresAt: state.drive.tokenExpiresAt
+  }));
+}
+
+function loadDriveAuthState() {
+  try {
+    const raw = localStorage.getItem(GOOGLE_DRIVE_AUTH_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.accessToken) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearDriveAuthState() {
+  localStorage.removeItem(GOOGLE_DRIVE_AUTH_KEY);
+  state.drive.accessToken = "";
+  state.drive.tokenExpiresAt = 0;
+}
+
+function hasValidDriveToken() {
+  if (!state.drive.accessToken) return false;
+  if (!state.drive.tokenExpiresAt) return true;
+  return state.drive.tokenExpiresAt > Date.now() + 60_000;
+}
+
+function restoreDriveAuthState() {
+  const saved = loadDriveAuthState();
+  if (!saved) return false;
+
+  state.drive.accessToken = saved.accessToken;
+  state.drive.tokenExpiresAt = Number(saved.tokenExpiresAt || 0);
+  setDriveUiState();
+  if (hasValidDriveToken()) {
+    setDriveStatus("保存済みのGoogle認証を復元しました。保存と読込ができます。");
+    return true;
+  }
+
+  setDriveStatus("保存済みのGoogle認証は期限切れです。必要ならGoogle再ログインを押してください。");
+  return false;
 }
 
 function normalizeImportedRecord(entry) {
@@ -1042,9 +1097,38 @@ function normalizeDrivePayload(payload) {
   throw new Error("records.jsonの形式が不正です。");
 }
 
+async function ensureDriveAccessToken({ prompt = "none" } = {}) {
+  if (!state.drive.tokenClient) {
+    throw new Error("Google認証ライブラリの準備がまだ完了していません。ページを更新してください。");
+  }
+
+  if (prompt === "none" && hasValidDriveToken()) {
+    return state.drive.accessToken;
+  }
+
+  if (prompt === "none" && !state.drive.accessToken) {
+    throw new Error("Google Driveの再認証が必要です。Google再ログインを押してください。");
+  }
+
+  if (prompt === "none" && state.drive.tokenExpiresAt > Date.now()) {
+    return state.drive.accessToken;
+  }
+
+  return new Promise((resolve, reject) => {
+    state.drive.pendingTokenRequest = { resolve, reject };
+    try {
+      state.drive.tokenClient.requestAccessToken({ prompt });
+    } catch (error) {
+      state.drive.pendingTokenRequest = null;
+      reject(error);
+    }
+  });
+}
+
 async function saveToDrive() {
   try {
     setDriveStatus("Google Driveへ保存中...");
+    await ensureDriveAccessToken({ prompt: "none" });
     const folder = await ensureDriveFolder();
     const existing = await findDriveFile(folder.id);
     const payload = {
@@ -1097,6 +1181,7 @@ async function saveToDrive() {
 async function loadFromDrive() {
   try {
     setDriveStatus("Google Driveから読込中...");
+    await ensureDriveAccessToken({ prompt: "none" });
     const folder = await ensureDriveFolder();
     const existing = await findDriveFile(folder.id);
 
@@ -1129,6 +1214,8 @@ async function loadFromDrive() {
 function initializeGoogleDrive() {
   if (state.drive.initialized) return;
 
+  restoreDriveAuthState();
+
   if (!globalThis.google?.accounts?.oauth2) {
     state.drive.initAttempts += 1;
     if (state.drive.initAttempts > 60) {
@@ -1144,23 +1231,38 @@ function initializeGoogleDrive() {
     client_id: GOOGLE_DRIVE_CLIENT_ID,
     scope: GOOGLE_DRIVE_SCOPE,
     callback: (response) => {
+      const pending = state.drive.pendingTokenRequest;
+      state.drive.pendingTokenRequest = null;
+
       if (response.error) {
+        clearDriveAuthState();
         setDriveStatus(`Googleログインに失敗しました: ${response.error}`);
-        state.drive.accessToken = "";
         setDriveUiState();
+        if (pending) {
+          pending.reject(new Error(response.error));
+        }
         return;
       }
 
       state.drive.accessToken = response.access_token;
+      state.drive.tokenExpiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
+      saveDriveAuthState();
       state.drive.initialized = true;
       setDriveUiState();
       setDriveStatus("Google Driveに接続しました。保存と読込ができます。");
+      if (pending) {
+        pending.resolve(response.access_token);
+      }
     }
   });
 
   state.drive.initialized = true;
   setDriveUiState();
-  setDriveStatus("Google Drive連携の準備完了です。Googleログインしてください。");
+  if (hasValidDriveToken()) {
+    setDriveStatus("保存済みのGoogle認証を復元しました。保存と読込ができます。");
+  } else {
+    setDriveStatus("Google Drive連携の準備完了です。Googleログインしてください。");
+  }
 }
 
 async function handleGoogleLogin() {
@@ -1171,7 +1273,7 @@ async function handleGoogleLogin() {
 
   try {
     setDriveStatus("Googleログイン中...");
-    state.drive.tokenClient.requestAccessToken({ prompt: "consent" });
+    await ensureDriveAccessToken({ prompt: "consent" });
   } catch (error) {
     setDriveStatus(`Googleログインに失敗しました: ${error.message}`);
   }
