@@ -171,8 +171,26 @@ function parseJapaneseDateTime(text) {
 
 function parseYen(value) {
   if (!value) return 0;
-  const match = String(value).replace(/,/g, "").match(/(\d+)\s*(?:円|四|囚|口)?/);
+  const match = String(value).replace(/,/g, "").match(/(\d+)\s*(?:円|四|囚|口)/);
   return match ? Number(match[1]) : 0;
+}
+
+function debugAmountExtraction(field, value, source, extra = {}) {
+  if (typeof console?.debug === "function") {
+    console.debug(`[keibaMemo] ${field}`, {
+      value,
+      source,
+      ...extra
+    });
+  }
+}
+
+function hasDateLikeText(text) {
+  return /\b\d{4}\s*年\b/.test(text) || /\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/.test(text) || /\b\d{1,2}\s*月\s*\d{1,2}\s*日\b/.test(text);
+}
+
+function isExcludedAmountLine(text) {
+  return /受付\s*番号|受付番号/.test(text) || hasDateLikeText(text);
 }
 
 function firstMatch(text, patterns, group = 1) {
@@ -244,7 +262,7 @@ function parseSpat4Entries(rawText) {
   const ticketType = firstMatch(compact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
 
   const payout = parsePayout(joined, compact);
-  const stake = parseStake(joined, payout);
+  const stake = parseStake(lines, joined, payout);
   const refund = parseRefund(joined);
 
   const selection = findSelection(lines, betType, stake);
@@ -287,6 +305,14 @@ function parseTicketRows(lines, common) {
     const ticketType = firstMatch(lookaheadCompact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
     const payout = parsePayout(lookahead.join(" "), lookaheadCompact);
     const refund = parseRefund(lookahead.join(" "));
+
+    debugAmountExtraction("stake", row.stake, line, {
+      parser: "parseTicketLine",
+      track: row.track,
+      raceNumber: row.raceNumber,
+      betType,
+      ticketType
+    });
 
     entries.push({
       ...common,
@@ -348,13 +374,21 @@ function parseTicketLine(line) {
 }
 
 function parsePayout(joined, compact) {
-  const hitMatch = compact.match(/的中(\d{2,})円/);
-  if (hitMatch) return Number(hitMatch[1]);
+  const hitMatch = compact.match(/的中\s*(\d{2,})\s*(?:円|四|囚|口)/);
+  if (hitMatch) {
+    const value = Number(hitMatch[1]);
+    debugAmountExtraction("payout", value, hitMatch[0], { parser: "parsePayout" });
+    return value;
+  }
 
   const hitIndex = joined.search(/的\s*中|的中/);
   if (hitIndex >= 0) {
-    const value = joined.slice(hitIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/);
-    return parseYen(value?.[0]);
+    const matched = joined.slice(hitIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/);
+    if (matched) {
+      const value = parseYen(matched[0]);
+      debugAmountExtraction("payout", value, matched[0], { parser: "parsePayout.joined" });
+      return value;
+    }
   }
   return 0;
 }
@@ -362,20 +396,73 @@ function parsePayout(joined, compact) {
 function parseRefund(joined) {
   const refundIndex = joined.search(/返還/);
   if (refundIndex < 0) return 0;
-  return parseYen(joined.slice(refundIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/)?.[0]);
+  const matched = joined.slice(refundIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/);
+  if (matched) {
+    const value = parseYen(matched[0]);
+    debugAmountExtraction("refund", value, matched[0], { parser: "parseRefund" });
+    return value;
+  }
+  return 0;
 }
 
-function parseStake(joined, payout) {
-  const trackRaceStake = joined.match(/(門別|盛岡|水沢|浦和|船橋|大井|川崎|金沢|笠松|名古屋|園田|姫路|高知|佐賀|帯広)\s*\d{1,2}\s*R\s+(\d{2,})\s*(?:円|四|囚|口)?/i);
-  if (trackRaceStake?.[2]) return Number(trackRaceStake[2]);
+function parseStake(lines, joined, payout) {
+  const lineCandidates = [];
+  for (const line of lines) {
+    if (isExcludedAmountLine(line)) continue;
+    if (/的中|返還/.test(line)) continue;
 
-  const explicitYen = [...joined.matchAll(/(\d{2,})\s*円/g)].map((match) => Number(match[1]));
-  const stakeCandidate = explicitYen.find((value) => value !== payout);
-  if (stakeCandidate) return stakeCandidate;
+    const matches = [...line.matchAll(/(\d{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
+      value: Number(match[1]),
+      source: match[0],
+      index: match.index
+    }));
 
-  const amountArea = joined.match(/投票\s*金額\s*(.+?)(?:的\s*中|的中|※|$)/);
-  const amountMatch = amountArea?.[1]?.match(/(\d{2,})\s*(?:円|四|囚|口)?/);
-  return amountMatch ? Number(amountMatch[1]) : 0;
+    for (const match of matches) {
+      lineCandidates.push({
+        value: match.value,
+        source: match.source,
+        line,
+        priority: line.includes("投票金額") ? 3 : 1,
+        index: match.index
+      });
+    }
+  }
+
+  if (lineCandidates.length) {
+    const best = lineCandidates
+      .filter((candidate) => candidate.value !== payout)
+      .sort((a, b) => b.priority - a.priority || a.index - b.index)[0];
+
+    if (best) {
+      debugAmountExtraction("stake", best.value, best.source, {
+        parser: "parseStake.line",
+        line: best.line,
+        priority: best.priority,
+        payout
+      });
+      return best.value;
+    }
+  }
+
+  const fallbackMatches = [...joined.matchAll(/(\d{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
+    value: Number(match[1]),
+    source: match[0],
+    index: match.index
+  }));
+
+  const fallbackCandidate = fallbackMatches
+    .filter((match) => match.value !== payout)
+    .find((match) => !hasDateLikeText(joined.slice(Math.max(0, match.index - 20), match.index + match[0].length + 20)));
+
+  if (fallbackCandidate) {
+    debugAmountExtraction("stake", fallbackCandidate.value, fallbackCandidate.source, {
+      parser: "parseStake.joinedFallback",
+      payout
+    });
+    return fallbackCandidate.value;
+  }
+
+  return 0;
 }
 
 function findSelection(lines, betType, stake) {
