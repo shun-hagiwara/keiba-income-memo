@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net https://www.googleapis.com https://accounts.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'"
     >
     <title>競馬収支メモ</title>
     <link rel="stylesheet" href="./styles.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script type="module" src="./app.js?v=20260528-6"></script>
@@ -230,6 +231,14 @@
             <button id="export-json" type="button" class="secondary">JSON出力</button>
             <button id="export-archive" type="button" class="secondary">画像付き出力</button>
           </div>
+        </div>
+        <div class="drive-controls" aria-label="Google Drive同期">
+          <div class="drive-actions">
+            <button id="google-login" type="button" class="secondary">Googleログイン</button>
+            <button id="drive-save" type="button" class="secondary" disabled>Driveへ保存</button>
+            <button id="drive-load" type="button" class="secondary" disabled>Driveから読込</button>
+          </div>
+          <p id="drive-status" class="drive-status">Google Drive連携は未接続です。</p>
         </div>
         <div class="table-wrap">
           <table>

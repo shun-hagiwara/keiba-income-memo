@@ -23,13 +23,26 @@ const fields = {
   sourceRawText: $("source-raw-text")
 };
 
+const GOOGLE_DRIVE_CLIENT_ID = "449273134542-vii1h2mtrrk29n0sp97s7tfh3m1uuhfe.apps.googleusercontent.com";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const GOOGLE_DRIVE_FOLDER_NAME = "KeibaMemo";
+const GOOGLE_DRIVE_FILE_NAME = "records.json";
+
 const state = {
   imageFiles: [],
   imageUrls: [],
   sourceImages: loadImages(),
   candidates: [],
   records: loadRecords(),
-  periodMode: "day"
+  periodMode: "day",
+  drive: {
+    accessToken: "",
+    folderId: "",
+    fileId: "",
+    tokenClient: null,
+    initialized: false,
+    initAttempts: 0
+  }
 };
 
 const moneyFormat = new Intl.NumberFormat("ja-JP", {
@@ -67,6 +80,69 @@ function loadImages() {
 
 function saveImages() {
   localStorage.setItem(`${STORAGE_KEY}-images`, JSON.stringify(state.sourceImages));
+}
+
+function setDriveStatus(message) {
+  const status = document.getElementById("drive-status");
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+function setDriveUiState() {
+  const loginButton = document.getElementById("google-login");
+  const saveButton = document.getElementById("drive-save");
+  const loadButton = document.getElementById("drive-load");
+
+  if (loginButton) {
+    loginButton.textContent = state.drive.accessToken ? "Google再ログイン" : "Googleログイン";
+  }
+  if (saveButton) saveButton.disabled = !state.drive.accessToken;
+  if (loadButton) loadButton.disabled = !state.drive.accessToken;
+}
+
+function normalizeImportedRecord(entry) {
+  const normalized = {
+    ...entry,
+    stake: Number(entry.stake || 0),
+    payout: Number(entry.payout || 0),
+    refund: Number(entry.refund || 0),
+    sourceIndex: Number(entry.sourceIndex || 0),
+    createdAt: entry.createdAt || new Date().toISOString(),
+    id: entry.id || crypto.randomUUID(),
+    dedupeKey: entry.dedupeKey || dedupeKey(entry)
+  };
+
+  return normalized;
+}
+
+function mergeRecords(entries, { statusTarget = "ocr-status" } = {}) {
+  let added = 0;
+  let skipped = 0;
+
+  for (const entry of entries) {
+    const record = normalizeImportedRecord(entry);
+    if (hasDuplicate(record)) {
+      skipped += 1;
+      continue;
+    }
+    state.records.push(record);
+    added += 1;
+  }
+
+  saveRecords();
+  renderHistory();
+
+  if (statusTarget === "drive-status") {
+    const parts = [];
+    if (added) parts.push(`${added}件追加`);
+    if (skipped) parts.push(`${skipped}件重複スキップ`);
+    setDriveStatus(parts.length ? `Drive同期: ${parts.join(" / ")}` : "Drive同期: 変更なし");
+  } else {
+    updateImportStatus(added, skipped);
+  }
+
+  return { added, skipped };
 }
 
 function normalizeText(text) {
@@ -453,21 +529,8 @@ function hasDuplicate(entry) {
 }
 
 function addRecords(entries) {
-  let added = 0;
-  let skipped = 0;
-  for (const entry of entries) {
-    const record = entry.id ? { ...entry, dedupeKey: entry.dedupeKey || dedupeKey(entry) } : toRecord(entry);
-    if (hasDuplicate(record)) {
-      skipped += 1;
-      continue;
-    }
-    state.records.push(record);
-    added += 1;
-  }
-  saveRecords();
-  renderHistory();
-  updateImportStatus(added, skipped);
-  return { added, skipped };
+  const summary = mergeRecords(entries.map((entry) => entry.id ? entry : toRecord(entry)));
+  return summary;
 }
 
 function updateImportStatus(added, skipped) {
@@ -791,6 +854,215 @@ function sanitizeFileName(name) {
   return String(name).replace(/[\\/:*?"<>|]/g, "_");
 }
 
+async function driveApiFetch(url, options = {}) {
+  if (!state.drive.accessToken) {
+    throw new Error("Googleログインが必要です。");
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${state.drive.accessToken}`,
+      ...options.headers
+    }
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`${response.status} ${response.statusText}${body ? `: ${body}` : ""}`.trim());
+  }
+
+  return response;
+}
+
+async function listDriveFiles(query) {
+  const response = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType)&pageSize=1000`, {
+    method: "GET"
+  });
+  return response.json();
+}
+
+async function ensureDriveFolder() {
+  const found = await listDriveFiles(`name='${GOOGLE_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const folder = found.files?.[0];
+
+  if (folder) {
+    state.drive.folderId = folder.id;
+    return folder;
+  }
+
+  const created = await driveApiFetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: GOOGLE_DRIVE_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: ["root"]
+    })
+  });
+
+  const folderMetadata = await created.json();
+  state.drive.folderId = folderMetadata.id;
+  return folderMetadata;
+}
+
+async function findDriveFile(folderId) {
+  const found = await listDriveFiles(`'${folderId}' in parents and name='${GOOGLE_DRIVE_FILE_NAME}' and trashed=false`);
+  return found.files?.[0] || null;
+}
+
+function normalizeDrivePayload(payload) {
+  if (Array.isArray(payload)) {
+    return { exportedAt: new Date().toISOString(), records: payload };
+  }
+
+  if (payload && Array.isArray(payload.records)) {
+    return {
+      exportedAt: payload.exportedAt || new Date().toISOString(),
+      records: payload.records
+    };
+  }
+
+  throw new Error("records.jsonの形式が不正です。");
+}
+
+async function saveToDrive() {
+  try {
+    setDriveStatus("Google Driveへ保存中...");
+    const folder = await ensureDriveFolder();
+    const existing = await findDriveFile(folder.id);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      records: state.records
+    };
+    const content = JSON.stringify(payload, null, 2);
+
+    if (existing?.id) {
+      const response = await driveApiFetch(`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=media`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: content
+      });
+      await response.text();
+      state.drive.fileId = existing.id;
+    } else {
+      const boundary = `----keiba-${crypto.randomUUID()}`;
+      const metadata = JSON.stringify({
+        name: GOOGLE_DRIVE_FILE_NAME,
+        mimeType: "application/json",
+        parents: [folder.id]
+      });
+      const multipartBody = [
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n`,
+        `--${boundary}--\r\n`
+      ].join("");
+
+      const response = await driveApiFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/related; boundary=${boundary}`
+        },
+        body: multipartBody
+      });
+
+      const created = await response.json();
+      state.drive.fileId = created.id;
+    }
+
+    setDriveStatus(`Driveへ保存しました (${new Date().toLocaleString("ja-JP")})`);
+  } catch (error) {
+    setDriveStatus(`Drive保存に失敗しました: ${error.message}`);
+  }
+}
+
+async function loadFromDrive() {
+  try {
+    setDriveStatus("Google Driveから読込中...");
+    const folder = await ensureDriveFolder();
+    const existing = await findDriveFile(folder.id);
+
+    if (!existing) {
+      setDriveStatus("Driveに records.json が見つかりませんでした。");
+      return;
+    }
+
+    const response = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${existing.id}?alt=media`, {
+      method: "GET"
+    });
+    const text = await response.text();
+    let payload;
+
+    try {
+      payload = JSON.parse(text);
+    } catch (error) {
+      throw new Error("records.json はJSONとして読み込めませんでした。");
+    }
+
+    const { records } = normalizeDrivePayload(payload);
+    const result = mergeRecords(records, { statusTarget: "drive-status" });
+    state.drive.fileId = existing.id;
+    setDriveStatus(`Driveから読込ました: ${result.added}件追加、${result.skipped}件重複スキップ`);
+  } catch (error) {
+    setDriveStatus(`Drive読込に失敗しました: ${error.message}`);
+  }
+}
+
+function initializeGoogleDrive() {
+  if (state.drive.initialized) return;
+
+  if (!globalThis.google?.accounts?.oauth2) {
+    state.drive.initAttempts += 1;
+    if (state.drive.initAttempts > 60) {
+      setDriveStatus("Google認証ライブラリの読み込みに失敗しました。ネットワークを確認して再読み込みしてください。");
+      return;
+    }
+    setDriveStatus("Google認証ライブラリを読み込み中です...");
+    window.setTimeout(initializeGoogleDrive, 250);
+    return;
+  }
+
+  state.drive.tokenClient = globalThis.google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_DRIVE_CLIENT_ID,
+    scope: GOOGLE_DRIVE_SCOPE,
+    callback: (response) => {
+      if (response.error) {
+        setDriveStatus(`Googleログインに失敗しました: ${response.error}`);
+        state.drive.accessToken = "";
+        setDriveUiState();
+        return;
+      }
+
+      state.drive.accessToken = response.access_token;
+      state.drive.initialized = true;
+      setDriveUiState();
+      setDriveStatus("Google Driveに接続しました。保存と読込ができます。");
+    }
+  });
+
+  state.drive.initialized = true;
+  setDriveUiState();
+  setDriveStatus("Google Drive連携の準備完了です。Googleログインしてください。");
+}
+
+async function handleGoogleLogin() {
+  if (!state.drive.tokenClient) {
+    setDriveStatus("Google認証ライブラリの準備がまだ完了していません。ページを更新してください。");
+    return;
+  }
+
+  try {
+    setDriveStatus("Googleログイン中...");
+    state.drive.tokenClient.requestAccessToken({ prompt: "consent" });
+  } catch (error) {
+    setDriveStatus(`Googleログインに失敗しました: ${error.message}`);
+  }
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -849,6 +1121,9 @@ $("ocr-text").addEventListener("input", () => {
 $("reset-form").addEventListener("click", resetForm);
 $("export-json").addEventListener("click", exportJson);
 $("export-archive").addEventListener("click", exportArchive);
+$("google-login").addEventListener("click", () => { void handleGoogleLogin(); });
+$("drive-save").addEventListener("click", () => { void saveToDrive(); });
+$("drive-load").addEventListener("click", () => { void loadFromDrive(); });
 $("period-day").addEventListener("click", () => setPeriodMode("day"));
 $("period-month").addEventListener("click", () => setPeriodMode("month"));
 $("period-year").addEventListener("click", () => setPeriodMode("year"));
@@ -921,5 +1196,8 @@ function setPeriodMode(mode) {
 renderHistory();
 renderCandidates();
 updateComputed();
+setDriveUiState();
+setDriveStatus("Google Drive連携は未接続です。Googleログインしてください。");
+window.addEventListener("load", initializeGoogleDrive);
 
 globalThis.keibaMemoParser = { parseSpat4Text, parseSpat4Entries, parseTextToCandidates };

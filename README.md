@@ -15,6 +15,8 @@ SPAT4スマホ版の「投票内容照会」スクリーンショットから収
 - 投票サイトへの自動ログイン、自動投票、定期巡回、内部APIアクセスは行いません。
 - 画像はサーバーへ送信せず、ブラウザ内でOCRします。
 - 保存データはブラウザのlocalStorageに保存します。
+- 追加機能として、Google Identity ServicesとGoogle Drive APIを使ったオプション同期にも対応します。Googleログイン後に `KeibaMemo` フォルダ内の `records.json` を保存・読込できます。
+- Drive同期はクライアント側のみで動作し、Client Secretは使用しません。
 - OCRライブラリはCDNから取得します。投票画像自体はCDNへ送信しません。
 
 ## 使い方
