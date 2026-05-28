@@ -287,6 +287,24 @@ function inferSelectionFromNoisyAmount(joined, stake) {
   return afterStake?.[1] ? map[afterStake[1]] : "";
 }
 
+function parseNumericAmountRow(line) {
+  const normalizedLine = normalizeText(line).trim();
+  const match = normalizedLine.match(/^(\d{1,3})\s+(\d{3,})(?:\s*[A-Za-z]+)?$/);
+  if (!match) return null;
+
+  const selection = match[1];
+  const stake = Number(match[2]);
+  if (!Number.isFinite(stake) || stake < 100 || stake % 100 !== 0) return null;
+  if (/^(20\d{2}|19\d{2})$/.test(selection)) return null;
+
+  return {
+    track: "",
+    raceNumber: "",
+    selection,
+    stake
+  };
+}
+
 function parseTicketRows(lines, common) {
   const entries = [];
   let currentDate = common.raceDate;
@@ -296,7 +314,8 @@ function parseTicketRows(lines, common) {
     const date = parseJapaneseDate(line);
     if (date) currentDate = date;
 
-    const row = parseTicketLine(line);
+    const numericRow = parseNumericAmountRow(line);
+    const row = numericRow || parseTicketLine(line);
     if (!row) continue;
 
     const lookahead = lines.slice(index + 1, index + 5);
@@ -306,19 +325,27 @@ function parseTicketRows(lines, common) {
     const payout = parsePayout(lookahead.join(" "), lookaheadCompact);
     const refund = parseRefund(lookahead.join(" "));
 
-    debugAmountExtraction("stake", row.stake, line, {
-      parser: "parseTicketLine",
-      track: row.track,
-      raceNumber: row.raceNumber,
-      betType,
-      ticketType
-    });
+    if (numericRow) {
+      debugAmountExtraction("selection/stake", { selection: numericRow.selection, stake: numericRow.stake }, line, {
+        parser: "parseNumericAmountRow",
+        betType,
+        ticketType
+      });
+    } else {
+      debugAmountExtraction("stake", row.stake, line, {
+        parser: "parseTicketLine",
+        track: row.track,
+        raceNumber: row.raceNumber,
+        betType,
+        ticketType
+      });
+    }
 
     entries.push({
       ...common,
       raceDate: currentDate || common.raceDate,
       track: row.track,
-      raceNumber: `${row.raceNumber}R`,
+      raceNumber: row.raceNumber ? `${row.raceNumber}R` : "",
       betType,
       selection: row.selection || inferSelectionFromNoisyAmount(line, row.stake),
       ticketType,
