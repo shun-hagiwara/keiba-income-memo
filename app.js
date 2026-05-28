@@ -1063,6 +1063,25 @@ async function handleGoogleLogin() {
   }
 }
 
+function formatFileSize(size) {
+  if (size < 1024) return `${size} bytes`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isImageFile(file) {
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  const extension = name.split(".").pop() || "";
+  const allowedExtensions = new Set(["png", "jpg", "jpeg", "heic", "heif", "webp"]);
+  return type.startsWith("image/") || allowedExtensions.has(extension);
+}
+
+function describeFile(file) {
+  const type = file.type || "unknown";
+  return `${file.name} (${type || "unknown"}, ${formatFileSize(file.size)})`;
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1077,34 +1096,89 @@ $("image-input").addEventListener("change", (event) => {
 });
 
 async function handleImageSelection(event) {
-  const files = [...(event.target.files || [])].filter((file) => file.type.startsWith("image/"));
-  if (!files.length) return;
-  if (files.length !== event.target.files.length) {
+  const selectedFiles = Array.from(event.target.files || []);
+  if (!selectedFiles.length) {
     $("ocr-status").textContent = "画像ファイルを選択してください。";
+    $("run-ocr").disabled = true;
+    $("clear-image").disabled = true;
     return;
   }
 
-  state.imageUrls.forEach((url) => URL.revokeObjectURL(url));
-  state.imageFiles = files;
-  state.imageUrls = files.map((file) => URL.createObjectURL(file));
-  for (const file of files) {
-    state.sourceImages[file.name] = {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      savedAt: new Date().toISOString(),
-      dataUrl: await fileToDataUrl(file)
-    };
+  const acceptedFiles = [];
+  const rejectedFiles = [];
+  for (const file of selectedFiles) {
+    if (isImageFile(file)) acceptedFiles.push(file);
+    else rejectedFiles.push(file);
   }
-  saveImages();
+
+  const statusMessages = [];
+  for (const file of acceptedFiles) {
+    statusMessages.push(`選択済み: ${describeFile(file)}`);
+  }
+  for (const file of rejectedFiles) {
+    statusMessages.push(`画像形式を認識できません: ${file.name} (${file.type || "unknown"})`);
+  }
+
+  if (acceptedFiles.length) {
+    state.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+    state.imageFiles = acceptedFiles;
+    state.imageUrls = acceptedFiles.map((file) => URL.createObjectURL(file));
+
+    try {
+      for (const file of acceptedFiles) {
+        try {
+          state.sourceImages[file.name] = {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            savedAt: new Date().toISOString(),
+            dataUrl: await fileToDataUrl(file)
+          };
+        } catch (error) {
+          state.sourceImages[file.name] = {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            savedAt: new Date().toISOString()
+          };
+        }
+      }
+      saveImages();
+      state.candidates = [];
+      const previewUrl = state.imageUrls[0];
+      if (previewUrl) {
+        $("image-preview").src = previewUrl;
+        $("image-preview").style.display = "block";
+      } else {
+        $("image-preview").removeAttribute("src");
+        $("image-preview").style.display = "none";
+      }
+    } catch (error) {
+      console.error("画像プレビューの準備に失敗しました", error);
+      $("image-preview").removeAttribute("src");
+      $("image-preview").style.display = "none";
+    }
+
+    $("ocr-status").textContent = `${statusMessages.join(" / ")} / ${acceptedFiles.length}枚選択済み`;
+    $("ocr-progress").textContent = "";
+    $("run-ocr").disabled = false;
+    $("parse-text").disabled = true;
+    $("clear-image").disabled = false;
+    renderCandidates();
+    return;
+  }
+
+  state.imageFiles = [];
+  state.imageUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.imageUrls = [];
   state.candidates = [];
-  $("image-preview").src = state.imageUrls[0];
-  $("image-preview").style.display = "block";
-  $("ocr-status").textContent = `${files.length}枚選択済み`;
+  $("image-preview").removeAttribute("src");
+  $("image-preview").style.display = "none";
+  $("ocr-status").textContent = statusMessages.join(" / ");
   $("ocr-progress").textContent = "";
-  $("run-ocr").disabled = false;
-  $("parse-text").disabled = false;
-  $("clear-image").disabled = false;
+  $("run-ocr").disabled = true;
+  $("parse-text").disabled = true;
+  $("clear-image").disabled = true;
   renderCandidates();
 }
 
