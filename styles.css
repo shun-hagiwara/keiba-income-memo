@@ -744,6 +744,138 @@ table {
   border-bottom: 0;
 }
 
+.period-chart-card {
+  position: relative;
+  margin-top: 16px;
+  border: 1px solid rgba(17, 67, 87, 0.16);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 12% 4%, rgba(26, 196, 202, 0.14), transparent 28%),
+    linear-gradient(180deg, #ffffff 0%, #f3fafc 100%);
+  box-shadow: 0 18px 38px rgba(7, 18, 29, 0.12);
+  padding: 16px;
+  overflow: hidden;
+}
+
+.period-chart-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(15, 107, 141, 0.06) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 40%);
+}
+
+.period-chart-topline {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.period-chart-topline h3 {
+  margin: 2px 0 0;
+  font-size: 1.08rem;
+}
+
+.period-chart-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.period-chart-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(17, 67, 87, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #193246;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(7, 18, 29, 0.06);
+}
+
+.chart-empty {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  border: 1px dashed rgba(15, 107, 141, 0.3);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  text-align: center;
+  padding: 18px;
+}
+
+.period-chart {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 230px;
+}
+
+.period-chart[hidden],
+.chart-empty[hidden] {
+  display: none;
+}
+
+.chart-grid {
+  stroke: rgba(17, 67, 87, 0.12);
+  stroke-width: 1;
+}
+
+.chart-zero-line {
+  stroke: rgba(207, 63, 68, 0.38);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 8;
+}
+
+.chart-axis-label,
+.chart-x-label {
+  fill: #5f6f7d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chart-area {
+  fill: url("#profitAreaGradient");
+}
+
+.chart-line {
+  fill: none;
+  stroke: url("#profitLineGradient");
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 8px 12px rgba(15, 107, 141, 0.22));
+}
+
+.chart-point circle {
+  stroke: #ffffff;
+  stroke-width: 3;
+  filter: drop-shadow(0 6px 8px rgba(7, 18, 29, 0.2));
+}
+
+.positive-point circle {
+  fill: var(--good);
+}
+
+.negative-point circle {
+  fill: var(--bad);
+}
+
 .candidate-source {
   display: grid;
   grid-template-columns: 54px minmax(110px, 1fr);
@@ -927,6 +1059,23 @@ th {
   .ocr-box {
     min-height: 220px;
     border-radius: 18px;
+  }
+
+  .period-chart-card {
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .period-chart-topline {
+    flex-direction: column;
+  }
+
+  .period-chart-summary {
+    justify-content: flex-start;
+  }
+
+  .period-chart {
+    min-height: 210px;
   }
 
   .table-wrap {

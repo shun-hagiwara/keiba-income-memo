@@ -763,9 +763,39 @@ function renderPeriodSummary() {
     cell.textContent = "集計できる履歴はありません。";
     row.append(cell);
     body.append(row);
+    renderPeriodChart([]);
     return;
   }
 
+  const rows = getPeriodRows();
+  if (!rows.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "日付のある履歴がありません。";
+    row.append(cell);
+    body.append(row);
+    renderPeriodChart([]);
+    return;
+  }
+
+  for (const item of [...rows].sort((a, b) => String(b.key).localeCompare(String(a.key)))) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td data-label="期間">${escapeHtml(formatPeriodLabel(item.key, state.periodMode))}</td>
+      <td data-label="件数" class="money">${item.count}</td>
+      <td data-label="購入" class="money">${moneyFormat.format(item.stake)}</td>
+      <td data-label="払戻+返還" class="money">${moneyFormat.format(item.returnAmount)}</td>
+      <td data-label="収支" class="money ${item.profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(item.profit)}</td>
+      <td data-label="回収率" class="money">${Math.round(item.roi * 10) / 10}%</td>
+    `;
+    body.append(row);
+  }
+
+  renderPeriodChart(rows);
+}
+
+function getPeriodRows() {
   const groups = new Map();
   for (const record of state.records) {
     const key = periodKey(record, state.periodMode);
@@ -777,31 +807,105 @@ function renderPeriodSummary() {
     groups.set(key, current);
   }
 
-  const rows = [...groups.values()].sort((a, b) => String(b.key).localeCompare(String(a.key)));
-  if (!rows.length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 6;
-    cell.textContent = "日付のある履歴がありません。";
-    row.append(cell);
-    body.append(row);
-    return;
+  return [...groups.values()]
+    .map((item) => {
+      const profit = item.returnAmount - item.stake;
+      return {
+        ...item,
+        profit,
+        roi: item.stake ? (item.returnAmount / item.stake) * 100 : 0
+      };
+    })
+    .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+}
+
+function renderPeriodChart(rows) {
+  const chart = $("period-chart");
+  const empty = $("period-chart-empty");
+  if (!chart || !empty) return;
+
+  chart.textContent = "";
+  empty.hidden = rows.length > 0;
+  chart.hidden = rows.length === 0;
+
+  const latest = rows[rows.length - 1];
+  const best = rows.reduce((current, item) => (!current || item.profit > current.profit ? item : current), null);
+  const worst = rows.reduce((current, item) => (!current || item.profit < current.profit ? item : current), null);
+  $("chart-latest").textContent = `最新 ${moneyFormat.format(latest?.profit || 0)}`;
+  $("chart-best").textContent = `最高 ${moneyFormat.format(best?.profit || 0)}`;
+  $("chart-worst").textContent = `最低 ${moneyFormat.format(worst?.profit || 0)}`;
+
+  if (!rows.length) return;
+
+  const width = 720;
+  const height = 260;
+  const padding = { top: 24, right: 28, bottom: 46, left: 76 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const values = rows.map((item) => item.profit);
+  const minValue = Math.min(0, ...values);
+  const maxValue = Math.max(0, ...values);
+  const span = Math.max(1, maxValue - minValue);
+  const topValue = maxValue + span * 0.16;
+  const bottomValue = minValue - span * 0.16;
+  const valueRange = Math.max(1, topValue - bottomValue);
+
+  const xFor = (index) => padding.left + (rows.length === 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth);
+  const yFor = (value) => padding.top + ((topValue - value) / valueRange) * plotHeight;
+  const points = rows.map((item, index) => ({ ...item, x: xFor(index), y: yFor(item.profit) }));
+  const zeroY = yFor(0);
+  const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  const lastPoint = points[points.length - 1];
+  const areaPath = `${linePath} L ${lastPoint.x.toFixed(2)} ${zeroY.toFixed(2)} L ${points[0].x.toFixed(2)} ${zeroY.toFixed(2)} Z`;
+  const gridValues = [topValue, (topValue + bottomValue) / 2, bottomValue];
+
+  const svg = (tag, attributes = {}, text = "") => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [name, value] of Object.entries(attributes)) {
+      element.setAttribute(name, String(value));
+    }
+    if (text) element.textContent = text;
+    return element;
+  };
+
+  const defs = svg("defs");
+  const gradient = svg("linearGradient", { id: "profitLineGradient", x1: "0", x2: "1", y1: "0", y2: "0" });
+  gradient.append(svg("stop", { offset: "0%", "stop-color": "#1ac4ca" }));
+  gradient.append(svg("stop", { offset: "100%", "stop-color": "#0f6b8d" }));
+  const areaGradient = svg("linearGradient", { id: "profitAreaGradient", x1: "0", x2: "0", y1: "0", y2: "1" });
+  areaGradient.append(svg("stop", { offset: "0%", "stop-color": "#1ac4ca", "stop-opacity": "0.24" }));
+  areaGradient.append(svg("stop", { offset: "100%", "stop-color": "#1ac4ca", "stop-opacity": "0.02" }));
+  defs.append(gradient, areaGradient);
+  chart.append(defs);
+
+  for (const value of gridValues) {
+    const y = yFor(value);
+    chart.append(svg("line", { class: "chart-grid", x1: padding.left, y1: y, x2: width - padding.right, y2: y }));
+    chart.append(svg("text", { class: "chart-axis-label", x: padding.left - 12, y: y + 4, "text-anchor": "end" }, compactMoney(value)));
   }
 
-  for (const item of rows) {
-    const profit = item.returnAmount - item.stake;
-    const roi = item.stake ? (item.returnAmount / item.stake) * 100 : 0;
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td data-label="期間">${escapeHtml(formatPeriodLabel(item.key, state.periodMode))}</td>
-      <td data-label="件数" class="money">${item.count}</td>
-      <td data-label="購入" class="money">${moneyFormat.format(item.stake)}</td>
-      <td data-label="払戻+返還" class="money">${moneyFormat.format(item.returnAmount)}</td>
-      <td data-label="収支" class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
-      <td data-label="回収率" class="money">${Math.round(roi * 10) / 10}%</td>
-    `;
-    body.append(row);
+  chart.append(svg("line", { class: "chart-zero-line", x1: padding.left, y1: zeroY, x2: width - padding.right, y2: zeroY }));
+  chart.append(svg("path", { class: "chart-area", d: areaPath }));
+  chart.append(svg("path", { class: "chart-line", d: linePath }));
+
+  const labelIndexes = rows.length <= 4 ? rows.map((_, index) => index) : [0, Math.floor((rows.length - 1) / 2), rows.length - 1];
+  for (const index of labelIndexes) {
+    const point = points[index];
+    chart.append(svg("text", { class: "chart-x-label", x: point.x, y: height - 18, "text-anchor": "middle" }, shortPeriodLabel(point.key, state.periodMode)));
   }
+
+  for (const point of points) {
+    const group = svg("g", { class: point.profit >= 0 ? "chart-point positive-point" : "chart-point negative-point" });
+    group.append(svg("circle", { cx: point.x, cy: point.y, r: 5 }));
+    group.append(svg("title", {}, `${formatPeriodLabel(point.key, state.periodMode)} ${moneyFormat.format(point.profit)}`));
+    chart.append(group);
+  }
+}
+
+function compactMoney(value) {
+  const rounded = Math.round(value);
+  if (Math.abs(rounded) >= 10000) return `${Math.round(rounded / 1000) / 10}万`;
+  return `${rounded.toLocaleString("ja-JP")}円`;
 }
 
 function periodKey(record, mode) {
@@ -820,6 +924,16 @@ function formatPeriodLabel(key, mode) {
   }
   const [year, month, day] = key.split("-");
   return `${year}年${Number(month)}月${Number(day)}日`;
+}
+
+function shortPeriodLabel(key, mode) {
+  if (mode === "year") return key;
+  if (mode === "month") {
+    const [, month] = key.split("-");
+    return `${Number(month)}月`;
+  }
+  const [, month, day] = key.split("-");
+  return `${Number(month)}/${Number(day)}`;
 }
 
 function renderCandidates() {
