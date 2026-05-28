@@ -1,0 +1,19 @@
+{
+  "name": "競馬収支メモ",
+  "short_name": "競馬収支",
+  "description": "SPAT4のスクリーンショットから競馬収支を記録するローカル優先アプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#050b13",
+  "theme_color": "#071b2f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./assets/horse-hero.png",
+      "sizes": "463x280",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

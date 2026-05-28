@@ -2,12 +2,16 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#071b2f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="競馬収支メモ">
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net https://www.googleapis.com https://accounts.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'"
     >
     <title>競馬収支メモ</title>
+    <link rel="manifest" href="./manifest.webmanifest">
     <link rel="stylesheet" href="./styles.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -66,7 +70,7 @@
           </div>
           <div class="ocr-box">
             <div class="ocr-status-row">
-              <span id="ocr-status">画像未選択</span>
+              <span id="ocr-status" role="status" aria-live="polite">画像未選択</span>
               <span id="ocr-progress"></span>
             </div>
             <textarea id="ocr-text" spellcheck="false" placeholder="OCR結果がここに表示されます。必要なら直接修正できます。"></textarea>
@@ -277,7 +281,7 @@
             <button id="drive-save" type="button" class="secondary" disabled>Driveへ保存</button>
             <button id="drive-load" type="button" class="secondary" disabled>Driveから読込</button>
           </div>
-          <p id="drive-status" class="drive-status">Google Drive連携は未接続です。</p>
+          <p id="drive-status" class="drive-status" role="status" aria-live="polite">Google Drive連携は未接続です。</p>
         </div>
         <div class="table-wrap">
           <table>

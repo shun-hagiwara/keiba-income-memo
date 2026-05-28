@@ -27,7 +27,7 @@ const GOOGLE_DRIVE_CLIENT_ID = "449273134542-vii1h2mtrrk29n0sp97s7tfh3m1uuhfe.ap
 const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GOOGLE_DRIVE_FOLDER_NAME = "KeibaMemo";
 const GOOGLE_DRIVE_FILE_NAME = "records.json";
-const GOOGLE_DRIVE_AUTH_KEY = "keiba-drive-auth-v1";
+const DEBUG_OCR_AMOUNTS = false;
 
 const state = {
   imageFiles: [],
@@ -105,31 +105,14 @@ function setDriveUiState() {
 }
 
 function saveDriveAuthState() {
-  if (!state.drive.accessToken) {
-    localStorage.removeItem(GOOGLE_DRIVE_AUTH_KEY);
-    return;
-  }
-
-  localStorage.setItem(GOOGLE_DRIVE_AUTH_KEY, JSON.stringify({
-    accessToken: state.drive.accessToken,
-    tokenExpiresAt: state.drive.tokenExpiresAt
-  }));
+  return false;
 }
 
 function loadDriveAuthState() {
-  try {
-    const raw = localStorage.getItem(GOOGLE_DRIVE_AUTH_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.accessToken) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function clearDriveAuthState() {
-  localStorage.removeItem(GOOGLE_DRIVE_AUTH_KEY);
   state.drive.accessToken = "";
   state.drive.tokenExpiresAt = 0;
 }
@@ -141,18 +124,6 @@ function hasValidDriveToken() {
 }
 
 function restoreDriveAuthState() {
-  const saved = loadDriveAuthState();
-  if (!saved) return false;
-
-  state.drive.accessToken = saved.accessToken;
-  state.drive.tokenExpiresAt = Number(saved.tokenExpiresAt || 0);
-  setDriveUiState();
-  if (hasValidDriveToken()) {
-    setDriveStatus("保存済みのGoogle認証を復元しました。保存と読込ができます。");
-    return true;
-  }
-
-  setDriveStatus("保存済みのGoogle認証は期限切れです。必要ならGoogle再ログインを押してください。");
   return false;
 }
 
@@ -231,7 +202,7 @@ function parseYen(value) {
 }
 
 function debugAmountExtraction(field, value, source, extra = {}) {
-  if (typeof console?.debug === "function") {
+  if (DEBUG_OCR_AMOUNTS && typeof console?.debug === "function") {
     console.debug(`[keibaMemo] ${field}`, {
       value,
       source,
@@ -746,16 +717,16 @@ function renderHistory() {
     const row = document.createElement("tr");
     const profit = profitOf(record);
     row.innerHTML = `
-      <td>${escapeHtml(record.raceDate || record.acceptedAt || "")}</td>
-      <td>${escapeHtml([record.track, record.raceNumber].filter(Boolean).join(" "))}</td>
-      <td>
+      <td data-label="日付">${escapeHtml(record.raceDate || record.acceptedAt || "")}</td>
+      <td data-label="レース">${escapeHtml([record.track, record.raceNumber].filter(Boolean).join(" "))}</td>
+      <td data-label="かけ方">
         ${escapeHtml([record.betType, record.selection, record.ticketType].filter(Boolean).join(" / "))}
         ${record.sourceName ? `<div class="row-sub">${escapeHtml(record.sourceName)}${record.sourceIndex ? ` #${record.sourceIndex}` : ""}</div>` : ""}
       </td>
-      <td class="money">${moneyFormat.format(record.stake || 0)}</td>
-      <td class="money">${moneyFormat.format((record.payout || 0) + (record.refund || 0))}</td>
-      <td class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
-      <td><button class="secondary delete-row" type="button" data-id="${record.id}">削除</button></td>
+      <td data-label="購入" class="money">${moneyFormat.format(record.stake || 0)}</td>
+      <td data-label="払戻" class="money">${moneyFormat.format((record.payout || 0) + (record.refund || 0))}</td>
+      <td data-label="収支" class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
+      <td data-label="操作"><button class="secondary delete-row" type="button" data-id="${record.id}">削除</button></td>
     `;
     body.append(row);
   }
@@ -805,12 +776,12 @@ function renderPeriodSummary() {
     const roi = item.stake ? (item.returnAmount / item.stake) * 100 : 0;
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${escapeHtml(formatPeriodLabel(item.key, state.periodMode))}</td>
-      <td class="money">${item.count}</td>
-      <td class="money">${moneyFormat.format(item.stake)}</td>
-      <td class="money">${moneyFormat.format(item.returnAmount)}</td>
-      <td class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
-      <td class="money">${Math.round(roi * 10) / 10}%</td>
+      <td data-label="期間">${escapeHtml(formatPeriodLabel(item.key, state.periodMode))}</td>
+      <td data-label="件数" class="money">${item.count}</td>
+      <td data-label="購入" class="money">${moneyFormat.format(item.stake)}</td>
+      <td data-label="払戻+返還" class="money">${moneyFormat.format(item.returnAmount)}</td>
+      <td data-label="収支" class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
+      <td data-label="回収率" class="money">${Math.round(roi * 10) / 10}%</td>
     `;
     body.append(row);
   }
@@ -850,19 +821,19 @@ function renderCandidates() {
       : `<div class="candidate-thumb placeholder-thumb">画像なし</div>`;
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>
+      <td data-label="画像">
         <div class="candidate-source">
           ${thumbnail}
           <span>${escapeHtml(sourceLabel || `${index + 1}枚目`)}</span>
         </div>
       </td>
-      <td>${escapeHtml(candidate.raceDate || candidate.acceptedAt || "")}</td>
-      <td>${escapeHtml([candidate.track, candidate.raceNumber].filter(Boolean).join(" "))}</td>
-      <td>${escapeHtml([candidate.betType, candidate.selection, candidate.ticketType].filter(Boolean).join(" / "))}</td>
-      <td class="money">${moneyFormat.format(candidate.stake || 0)}</td>
-      <td class="money">${moneyFormat.format((candidate.payout || 0) + (candidate.refund || 0))}</td>
-      <td class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
-      <td>
+      <td data-label="日付">${escapeHtml(candidate.raceDate || candidate.acceptedAt || "")}</td>
+      <td data-label="レース">${escapeHtml([candidate.track, candidate.raceNumber].filter(Boolean).join(" "))}</td>
+      <td data-label="かけ方">${escapeHtml([candidate.betType, candidate.selection, candidate.ticketType].filter(Boolean).join(" / "))}</td>
+      <td data-label="購入" class="money">${moneyFormat.format(candidate.stake || 0)}</td>
+      <td data-label="払戻" class="money">${moneyFormat.format((candidate.payout || 0) + (candidate.refund || 0))}</td>
+      <td data-label="収支" class="money ${profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(profit)}</td>
+      <td data-label="操作">
         ${duplicate ? '<span class="status-pill">重複</span>' : ""}
         <button class="secondary delete-row" type="button" data-load-candidate="${index}">フォームへ</button>
         <button class="secondary delete-row" type="button" data-save-candidate="${index}" ${duplicate ? "disabled" : ""}>保存</button>
@@ -1442,6 +1413,11 @@ $("entry-form").addEventListener("submit", (event) => {
 $("history-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-id]");
   if (!button) return;
+  const record = state.records.find((item) => item.id === button.dataset.id);
+  const label = record
+    ? [record.raceDate, record.track, record.raceNumber, record.betType, record.selection].filter(Boolean).join(" ")
+    : "この履歴";
+  if (!window.confirm(`${label} を削除しますか？`)) return;
   state.records = state.records.filter((record) => record.id !== button.dataset.id);
   saveRecords();
   renderHistory();
