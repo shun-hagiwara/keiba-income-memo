@@ -16,9 +16,17 @@
   </head>
   <body>
     <header class="app-header">
+      <!-- 馬シルエット背景SVG -->
+      <div class="header-bg-horse" aria-hidden="true">
+        <svg viewBox="0 0 320 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M30 70 Q50 30 90 50 Q120 60 140 40 Q160 20 200 40 Q240 60 270 30 Q300 10 310 70" stroke="#223a5e" stroke-width="6" fill="none" opacity="0.10"/>
+          <path d="M60 60 Q70 40 90 50 Q110 60 120 40" stroke="#223a5e" stroke-width="3" fill="none" opacity="0.13"/>
+          <ellipse cx="60" cy="65" rx="7" ry="4" fill="#223a5e" opacity="0.08"/>
+        </svg>
+      </div>
       <div>
         <p class="eyebrow">SPAT4 screenshot import</p>
-        <h1>競馬収支メモ</h1>
+        <h1>競馬収支メモ <span class="horse-icon" aria-label="馬アイコン">🐎</span></h1>
       </div>
       <div class="privacy-badge">画像はブラウザ内で処理</div>
     </header>
@@ -26,7 +34,7 @@
     <main class="app-shell">
       <section class="panel import-panel" aria-labelledby="import-title">
         <div class="section-heading">
-          <h2 id="import-title">画像取り込み</h2>
+          <h2 id="import-title">画像取り込み <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
           <p>SPAT4スマホ版の投票内容照会スクリーンショットを選択してください。</p>
         </div>
 
@@ -84,7 +92,7 @@
 
       <section class="panel" aria-labelledby="form-title">
         <div class="section-heading">
-          <h2 id="form-title">1件編集</h2>
+          <h2 id="form-title">1件編集 <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
           <p>複数アップロード時は上の候補一覧を使います。ここは候補を1件だけ修正して保存するための編集欄です。</p>
         </div>
 
@@ -170,7 +178,7 @@
 
       <section class="panel dashboard" aria-labelledby="summary-title">
         <div class="section-heading">
-          <h2 id="summary-title">収支サマリー</h2>
+          <h2 id="summary-title">収支サマリー <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
         </div>
         <div class="metric-grid">
           <div class="metric">
@@ -195,7 +203,7 @@
       <section class="panel" aria-labelledby="period-title">
         <div class="section-heading history-heading">
           <div>
-            <h2 id="period-title">期間別収支</h2>
+            <h2 id="period-title">期間別収支 <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
             <p>保存済み履歴を日別・月別・年別に集計します。</p>
           </div>
           <div class="segmented-control" role="group" aria-label="集計単位">
@@ -224,7 +232,7 @@
       <section class="panel" aria-labelledby="history-title">
         <div class="section-heading history-heading">
           <div>
-            <h2 id="history-title">履歴</h2>
+            <h2 id="history-title">履歴 <span class="horse-icon" aria-label="馬アイコン">🐎</span></h2>
             <p>保存データはこのブラウザ内に保存されます。</p>
           </div>
           <div>
