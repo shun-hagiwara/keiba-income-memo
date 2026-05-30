@@ -1,5 +1,6 @@
 {
   "scripts": {
-    "test": "node --check app.js && node tests/parser.test.mjs"
+    "test": "node --check app.js && node tests/parser.test.mjs",
+    "test:e2e": "node tests/upload-ocr-smoke.mjs"
   }
 }
