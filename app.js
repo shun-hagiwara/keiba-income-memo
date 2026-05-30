@@ -400,10 +400,12 @@ function parseIpatRaceLine(line) {
   const raceName = (match[3] || "")
     .replace(/購入.*$/g, "")
     .replace(/払戻.*$/g, "")
+    .replace(/[®©]/g, "")
     .replace(/[。．・\-ー―_]+$/g, "")
     .replace(/([ぁ-んァ-ヶ一-龠])[a-z]$/g, "$1")
     .replace(/[・･\s]+/g, "")
     .replace(/([ァ-ヶ])-/g, "$1ー")
+    .replace(/[っッぁぃぅぇぉゃゅょゎ]$/g, "")
     .trim();
 
   return {
