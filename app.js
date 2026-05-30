@@ -393,7 +393,7 @@ function parseSpat4Entries(rawText) {
 
 function parseIpatRaceLine(line) {
   const compact = compactText(line);
-  const racePattern = new RegExp(`(${IPAT_TRACK_PATTERN})(\\d{1,2})R(.*)$`, "i");
+  const racePattern = new RegExp(`(${IPAT_TRACK_PATTERN})(\\d{1,2})(?:h)?R(.*)$`, "i");
   const match = compact.match(racePattern);
   if (!match) return null;
 
@@ -405,6 +405,7 @@ function parseIpatRaceLine(line) {
     .replace(/([ぁ-んァ-ヶ一-龠])[a-z]$/g, "$1")
     .replace(/[・･\s]+/g, "")
     .replace(/([ァ-ヶ])-/g, "$1ー")
+    .replace(/([ぁ-んァ-ヶ一-龠])[0-9０-９]+$/g, "$1")
     .replace(/[っッぁぃぅぇぉゃゅょゎ]$/g, "")
     .trim();
 
