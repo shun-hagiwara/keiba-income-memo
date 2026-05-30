@@ -207,6 +207,28 @@ assert.deepEqual(
   ]
 );
 
+const iphoneIpatOcr = `3 \u4eac\u90fd 12R
+\u8cfc\u5165 600q \u6255\u623b Om \u306b
+\u8f03 \u6771\u4eac 12hR BS \u30a4\u30ec \u30d6 6
+\u8cfc\u5165 1000m \u6255\u623b 3120m
+\u8f03 \u6771\u4eac 11R \u30f4\u30a3 \u30af\u30c8 \u30ea 6
+\u8cfc\u5165 900m _ \u6255\u623b 550m`;
+
+assert.deepEqual(
+  plain(parser.parseIpatEntries(iphoneIpatOcr, "2026-05-17").map(({ track, raceNumber, stake, payout, memo }) => ({
+    track,
+    raceNumber,
+    stake,
+    payout,
+    memo
+  }))),
+  [
+    { track: "\u4eac\u90fd", raceNumber: "12R", stake: 600, payout: 0, memo: "" },
+    { track: "\u6771\u4eac", raceNumber: "12R", stake: 1000, payout: 3120, memo: "BS\u30a4\u30ec\u30d6" },
+    { track: "\u6771\u4eac", raceNumber: "11R", stake: 900, payout: 550, memo: "\u30f4\u30a3\u30af\u30c8\u30ea" }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
