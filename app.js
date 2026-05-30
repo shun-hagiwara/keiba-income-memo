@@ -45,7 +45,8 @@ const state = {
     initialized: false,
     initAttempts: 0,
     pendingTokenRequest: null
-  }
+  },
+  ipatDateResolver: null
 };
 
 const moneyFormat = new Intl.NumberFormat("ja-JP", {
@@ -260,6 +261,48 @@ function requestIpatRaceDate() {
   return date;
 }
 
+function setIpatRaceDate(entries, raceDate) {
+  if (!raceDate) return;
+  entries.forEach((entry) => {
+    if (entry.service === "IPAT" && !entry.raceDate) {
+      entry.raceDate = raceDate;
+    }
+  });
+}
+
+function closeIpatDateModal(raceDate = "") {
+  const modal = $("ipat-date-modal");
+  modal.hidden = true;
+  document.body.classList.remove("modal-open");
+  $("ipat-date-preview").removeAttribute("src");
+
+  if (state.ipatDateResolver) {
+    state.ipatDateResolver(raceDate);
+    state.ipatDateResolver = null;
+  }
+}
+
+function requestIpatRaceDateFromImage({ sourceName = "", sourceUrl = "" } = {}) {
+  const modal = $("ipat-date-modal");
+  const image = $("ipat-date-preview");
+  const source = $("ipat-date-source");
+  const input = $("ipat-date-input");
+
+  if (!modal || !image || !source || !input) return Promise.resolve(requestIpatRaceDate());
+
+  source.textContent = sourceName ? `${sourceName} の対象日を設定します。` : "表示中の画像の対象日を設定します。";
+  input.value = todayDateString();
+  if (sourceUrl) image.src = sourceUrl;
+  else image.removeAttribute("src");
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+  window.setTimeout(() => input.focus(), 0);
+
+  return new Promise((resolve) => {
+    state.ipatDateResolver = resolve;
+  });
+}
+
 function normalizeAmountDigits(value) {
   return String(value || "")
     .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
@@ -359,6 +402,8 @@ function parseIpatRaceLine(line) {
     .replace(/払戻.*$/g, "")
     .replace(/[。．・\-ー―_]+$/g, "")
     .replace(/([ぁ-んァ-ヶ一-龠])[a-z]$/g, "$1")
+    .replace(/[・･\s]+/g, "")
+    .replace(/([ァ-ヶ])-/g, "$1ー")
     .trim();
 
   return {
@@ -374,7 +419,7 @@ function parseIpatAmounts(text) {
   if (!stakeMatch) return null;
 
   const afterStake = compact.slice((stakeMatch.index || 0) + stakeMatch[0].length);
-  const payoutMatch = afterStake.match(/(?:払戻|払|戻|#?E|H#?HE)?[^0-9０-９OoＯｏ〇○]*([0-9０-９OoＯｏ〇○,]{1,8})(?:円|m|M)?/);
+  const payoutMatch = afterStake.match(/(?:払戻|払|戻|払戻金|#?E|H#?HE)?[^0-9０-９OoＯｏ〇○]*([0-9０-９OoＯｏ〇○,]{1,8})(?:円|m|M)?/);
 
   return {
     stake: parseIpatAmount(stakeMatch[1]),
@@ -723,13 +768,10 @@ function toRecord(entry) {
 
 function parseTextToCandidates(rawText) {
   const blocks = splitOcrBlocks(rawText);
-  let ipatRaceDate = "";
-  let ipatDatePrompted = false;
   return blocks.flatMap((block, index) => {
-    const entries = parseEntries(block.text, { ipatRaceDate });
-    if (!ipatRaceDate && !ipatDatePrompted && entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
-      ipatDatePrompted = true;
-      ipatRaceDate = applyIpatRaceDate(entries, requestIpatRaceDate);
+    const entries = parseEntries(block.text);
+    if (entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
+      applyIpatRaceDate(entries, requestIpatRaceDate);
     }
     return entries.map((entry, entryIndex) => ({
       ...entry,
@@ -1194,8 +1236,6 @@ async function runOcr() {
   });
 
   let completedImages = 0;
-  let ipatRaceDate = "";
-  let ipatDatePrompted = false;
   try {
     const rawTexts = [];
     for (const [index, file] of state.imageFiles.entries()) {
@@ -1205,10 +1245,14 @@ async function runOcr() {
       const result = await worker.recognize(file);
       const text = normalizeText(result.data.text);
       rawTexts.push(`--- ${file.name || `${index + 1}枚目`} ---\n${text}`);
-      const parsedEntries = parseEntries(text, { ipatRaceDate });
-      if (!ipatRaceDate && !ipatDatePrompted && parsedEntries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
-        ipatDatePrompted = true;
-        ipatRaceDate = applyIpatRaceDate(parsedEntries, requestIpatRaceDate);
+      const parsedEntries = parseEntries(text);
+      if (parsedEntries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
+        const sourceName = file.name || `${index + 1}枚目`;
+        const raceDate = await requestIpatRaceDateFromImage({
+          sourceName,
+          sourceUrl: state.imageUrls[index]
+        });
+        setIpatRaceDate(parsedEntries, raceDate);
       }
       const entries = parsedEntries.map((entry, entryIndex) => ({
         ...entry,
@@ -1711,6 +1755,14 @@ $("export-archive").addEventListener("click", exportArchive);
 $("google-login").addEventListener("click", () => { void handleGoogleLogin(); });
 $("drive-save").addEventListener("click", () => { void saveToDrive(); });
 $("drive-load").addEventListener("click", () => { void loadFromDrive(); });
+$("ipat-date-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const date = normalizeDateInput($("ipat-date-input").value);
+  if (!date) return;
+  closeIpatDateModal(date);
+});
+$("ipat-date-cancel").addEventListener("click", () => closeIpatDateModal(""));
+$("ipat-date-close").addEventListener("click", () => closeIpatDateModal(""));
 $("period-day").addEventListener("click", () => setPeriodMode("day"));
 $("period-month").addEventListener("click", () => setPeriodMode("month"));
 $("period-year").addEventListener("click", () => setPeriodMode("year"));
