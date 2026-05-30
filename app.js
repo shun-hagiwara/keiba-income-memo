@@ -959,6 +959,47 @@ function getPeriodRows() {
     .sort((a, b) => String(a.key).localeCompare(String(b.key)));
 }
 
+function niceChartStep(rawStep) {
+  const safeStep = Math.max(1, Math.abs(rawStep));
+  const magnitude = 10 ** Math.floor(Math.log10(safeStep));
+  const normalized = safeStep / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+function getNiceChartScale(values) {
+  const minValue = Math.min(0, ...values);
+  const maxValue = Math.max(0, ...values);
+  const rawRange = Math.max(1, maxValue - minValue);
+  let step = niceChartStep(rawRange / 4);
+  let bottomValue = Math.floor(minValue / step) * step;
+  let topValue = Math.ceil(maxValue / step) * step;
+
+  if (topValue === bottomValue) {
+    topValue += step;
+    bottomValue -= step;
+  }
+  if (topValue === maxValue) topValue += step;
+  if (bottomValue === minValue) bottomValue -= step;
+
+  let tickCount = Math.round((topValue - bottomValue) / step) + 1;
+  while (tickCount > 6) {
+    step = niceChartStep(step * 2.1);
+    bottomValue = Math.floor(minValue / step) * step;
+    topValue = Math.ceil(maxValue / step) * step;
+    if (topValue === maxValue) topValue += step;
+    if (bottomValue === minValue) bottomValue -= step;
+    tickCount = Math.round((topValue - bottomValue) / step) + 1;
+  }
+
+  const gridValues = [];
+  for (let value = topValue; value >= bottomValue; value -= step) {
+    gridValues.push(Math.abs(value) < 0.0001 ? 0 : value);
+  }
+
+  return { topValue, bottomValue, gridValues };
+}
+
 function renderPeriodChart(rows) {
   const chart = $("period-chart");
   const empty = $("period-chart-empty");
@@ -983,11 +1024,7 @@ function renderPeriodChart(rows) {
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const values = rows.map((item) => item.profit);
-  const minValue = Math.min(0, ...values);
-  const maxValue = Math.max(0, ...values);
-  const span = Math.max(1, maxValue - minValue);
-  const topValue = maxValue + span * 0.16;
-  const bottomValue = minValue - span * 0.16;
+  const { topValue, bottomValue, gridValues } = getNiceChartScale(values);
   const valueRange = Math.max(1, topValue - bottomValue);
 
   const xFor = (index) => padding.left + (rows.length === 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth);
@@ -997,8 +1034,6 @@ function renderPeriodChart(rows) {
   const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
   const lastPoint = points[points.length - 1];
   const areaPath = `${linePath} L ${lastPoint.x.toFixed(2)} ${zeroY.toFixed(2)} L ${points[0].x.toFixed(2)} ${zeroY.toFixed(2)} Z`;
-  const gridValues = [topValue, (topValue + bottomValue) / 2, bottomValue];
-
   const svg = (tag, attributes = {}, text = "") => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const [name, value] of Object.entries(attributes)) {
