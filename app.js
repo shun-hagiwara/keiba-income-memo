@@ -55,9 +55,11 @@ const moneyFormat = new Intl.NumberFormat("ja-JP", {
 });
 
 const TRACK_NAMES = ["門別", "盛岡", "水沢", "浦和", "船橋", "大井", "川崎", "金沢", "笠松", "名古屋", "園田", "姫路", "高知", "佐賀", "帯広"];
+const IPAT_TRACK_NAMES = ["札幌", "函館", "福島", "新潟", "東京", "中山", "中京", "京都", "阪神", "小倉"];
 const BET_TYPES = ["三連単", "三連複", "3連単", "3連複", "ワイド", "枠複", "馬複", "枠単", "馬単", "単勝", "複勝"];
 const TICKET_TYPES = ["フォーメーション", "ボックス", "流し", "通常"];
 const TRACK_PATTERN = TRACK_NAMES.join("|");
+const IPAT_TRACK_PATTERN = IPAT_TRACK_NAMES.join("|");
 
 function loadRecords() {
   try {
@@ -231,6 +233,46 @@ function compactText(text) {
   return normalizeText(text).replace(/\s+/g, "");
 }
 
+function todayDateString() {
+  const now = new Date();
+  const year = String(now.getFullYear());
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDateInput(value) {
+  const text = normalizeText(String(value || "")).trim();
+  const match = text.match(/^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?$/);
+  if (!match) return "";
+  const [, year, month, day] = match;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+function requestIpatRaceDate() {
+  const input = window.prompt("IPAT/JRAの対象日を入力してください (YYYY-MM-DD)", todayDateString());
+  if (input === null) return "";
+  const date = normalizeDateInput(input);
+  if (!date) {
+    window.alert("日付を読み取れませんでした。候補のフォームで日付を入力してから保存してください。");
+    return "";
+  }
+  return date;
+}
+
+function normalizeAmountDigits(value) {
+  return String(value || "")
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/[OoＯｏ〇○]/g, "0")
+    .replace(/[,\s]/g, "");
+}
+
+function parseIpatAmount(value) {
+  const normalized = normalizeAmountDigits(value);
+  const match = normalized.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
 function parseSpat4Text(rawText) {
   return parseSpat4Entries(rawText)[0] || emptySpat4Entry();
 }
@@ -304,6 +346,88 @@ function parseSpat4Entries(rawText) {
     payout,
     refund
   }];
+}
+
+function parseIpatRaceLine(line) {
+  const compact = compactText(line);
+  const racePattern = new RegExp(`^(?:確)?(${IPAT_TRACK_PATTERN})(\\d{1,2})R(.*)$`, "i");
+  const match = compact.match(racePattern);
+  if (!match) return null;
+
+  const raceName = (match[3] || "")
+    .replace(/購入.*$/g, "")
+    .replace(/払戻.*$/g, "")
+    .trim();
+
+  return {
+    track: match[1],
+    raceNumber: `${match[2]}R`,
+    raceName
+  };
+}
+
+function parseIpatAmounts(text) {
+  const compact = compactText(text);
+  const stakeMatch = compact.match(/購入([0-9０-９OoＯｏ〇○,]+)円/);
+  const payoutMatch = compact.match(/払戻([0-9０-９OoＯｏ〇○,]+)円/);
+  if (!stakeMatch) return null;
+
+  return {
+    stake: parseIpatAmount(stakeMatch[1]),
+    payout: payoutMatch ? parseIpatAmount(payoutMatch[1]) : 0
+  };
+}
+
+function parseIpatEntries(rawText, raceDate = "") {
+  const text = normalizeText(rawText);
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const entries = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const race = parseIpatRaceLine(lines[index]);
+    if (!race) continue;
+
+    const amountWindow = lines.slice(index, index + 5).join(" ");
+    const amounts = parseIpatAmounts(amountWindow);
+    if (!amounts?.stake) continue;
+
+    entries.push({
+      service: "IPAT",
+      receiptNumber: "",
+      acceptedAt: "",
+      raceDate,
+      track: race.track,
+      raceNumber: race.raceNumber,
+      betType: "",
+      selection: "",
+      ticketType: "",
+      stake: amounts.stake,
+      payout: amounts.payout,
+      refund: 0,
+      memo: race.raceName
+    });
+  }
+
+  return entries;
+}
+
+function parseEntries(rawText, { ipatRaceDate = "" } = {}) {
+  const ipatEntries = parseIpatEntries(rawText, ipatRaceDate);
+  return ipatEntries.length ? ipatEntries : parseSpat4Entries(rawText);
+}
+
+function applyIpatRaceDate(entries, getDate) {
+  if (!entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) return "";
+
+  const raceDate = getDate();
+  if (!raceDate) return "";
+
+  entries.forEach((entry) => {
+    if (entry.service === "IPAT" && !entry.raceDate) {
+      entry.raceDate = raceDate;
+    }
+  });
+  return raceDate;
 }
 
 function inferSelectionFromNoisyAmount(joined, stake) {
@@ -590,14 +714,21 @@ function toRecord(entry) {
 
 function parseTextToCandidates(rawText) {
   const blocks = splitOcrBlocks(rawText);
-  return blocks.flatMap((block, index) =>
-    parseSpat4Entries(block.text).map((entry, entryIndex) => ({
+  let ipatRaceDate = "";
+  let ipatDatePrompted = false;
+  return blocks.flatMap((block, index) => {
+    const entries = parseEntries(block.text, { ipatRaceDate });
+    if (!ipatRaceDate && !ipatDatePrompted && entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
+      ipatDatePrompted = true;
+      ipatRaceDate = applyIpatRaceDate(entries, requestIpatRaceDate);
+    }
+    return entries.map((entry, entryIndex) => ({
       ...entry,
       sourceName: block.name || `${index + 1}枚目`,
       sourceIndex: entryIndex + 1,
       rawText: block.text
-    }))
-  );
+    }));
+  });
 }
 
 function splitOcrBlocks(rawText) {
@@ -1019,6 +1150,8 @@ async function runOcr() {
   });
 
   let completedImages = 0;
+  let ipatRaceDate = "";
+  let ipatDatePrompted = false;
   try {
     const rawTexts = [];
     for (const [index, file] of state.imageFiles.entries()) {
@@ -1028,7 +1161,12 @@ async function runOcr() {
       const result = await worker.recognize(file);
       const text = normalizeText(result.data.text);
       rawTexts.push(`--- ${file.name || `${index + 1}枚目`} ---\n${text}`);
-      const entries = parseSpat4Entries(text).map((entry, entryIndex) => ({
+      const parsedEntries = parseEntries(text, { ipatRaceDate });
+      if (!ipatRaceDate && !ipatDatePrompted && parsedEntries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
+        ipatDatePrompted = true;
+        ipatRaceDate = applyIpatRaceDate(parsedEntries, requestIpatRaceDate);
+      }
+      const entries = parsedEntries.map((entry, entryIndex) => ({
         ...entry,
         sourceName: file.name || `${index + 1}枚目`,
         sourceUrl: state.imageUrls[index],
@@ -1049,6 +1187,9 @@ async function runOcr() {
     updateOcrBatchProgress(state.imageFiles.length, state.imageFiles.length, { running: false });
     $("parse-text").disabled = false;
     renderCandidates();
+    if (state.candidates.some((candidate) => candidate.service === "IPAT" && !candidate.raceDate)) {
+      $("ocr-status").textContent = "IPAT/JRA候補は対象日をフォームで入力してから保存してください。";
+    }
     if (state.candidates[0]) applyParsedEntry(state.candidates[0]);
   } catch (error) {
     $("ocr-status").textContent = "OCRに失敗しました。手入力または再試行してください。";
@@ -1667,4 +1808,11 @@ setDriveStatus("Google Drive連携は未接続です。Googleログインして�
 window.addEventListener("load", initializeGoogleDrive);
 window.addEventListener("load", initializeHeaderMotion);
 
-globalThis.keibaMemoParser = { parseSpat4Text, parseSpat4Entries, parseTextToCandidates };
+globalThis.keibaMemoParser = {
+  parseSpat4Text,
+  parseSpat4Entries,
+  parseIpatEntries,
+  parseEntries,
+  parseTextToCandidates,
+  normalizeDateInput
+};
