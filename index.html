@@ -326,5 +326,31 @@
         </div>
       </section>
     </main>
+    <div id="ipat-date-modal" class="modal-backdrop" hidden>
+      <div class="ipat-date-dialog" role="dialog" aria-modal="true" aria-labelledby="ipat-date-title">
+        <div class="ipat-date-header">
+          <div>
+            <p class="eyebrow">IPAT / JRA</p>
+            <h2 id="ipat-date-title">対象日を確認</h2>
+            <p id="ipat-date-source">画像ごとに日付を設定します。</p>
+          </div>
+          <button id="ipat-date-close" class="secondary icon-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="ipat-date-preview-wrap">
+          <img id="ipat-date-preview" alt="日付を設定する画像のプレビュー">
+        </div>
+        <form id="ipat-date-form" class="ipat-date-form">
+          <label>
+            <span>この画像の対象日</span>
+            <input id="ipat-date-input" type="date" required>
+          </label>
+          <p class="ipat-date-help">この日付は、表示中の画像から読み取ったIPAT/JRA候補だけに適用されます。</p>
+          <div class="modal-actions">
+            <button id="ipat-date-cancel" class="secondary" type="button">日付なしで続行</button>
+            <button class="primary" type="submit">この日付を適用</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </body>
 </html>

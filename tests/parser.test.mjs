@@ -157,13 +157,63 @@ assert.deepEqual(
   ]
 );
 
+const attachedIpatExamples = `\u78ba \u6771\u4eac 11R \u30aa\u30fc\u30af\u30b9
+\u8cfc\u5165 900\u5186 \u6255\u623b 0\u5186
+\u78ba \u4eac\u90fd 12R
+\u8cfc\u5165 600\u5186 \u6255\u623b 0\u5186
+\u78ba \u6771\u4eac 12R B S \u30a4\u30ec\u30d6
+\u8cfc\u5165 1,000\u5186 \u6255\u623b 3,120\u5186
+\u78ba \u6771\u4eac 11R \u30f4\u30a3\u30af\u30c8\u30ea
+\u8cfc\u5165 900\u5186 \u6255\u623b 550\u5186`;
+
+assert.deepEqual(
+  plain(parser.parseIpatEntries(attachedIpatExamples, "2026-05-31").map(({ track, raceNumber, stake, payout, memo }) => ({
+    track,
+    raceNumber,
+    stake,
+    payout,
+    memo
+  }))),
+  [
+    { track: "\u6771\u4eac", raceNumber: "11R", stake: 900, payout: 0, memo: "\u30aa\u30fc\u30af\u30b9" },
+    { track: "\u4eac\u90fd", raceNumber: "12R", stake: 600, payout: 0, memo: "" },
+    { track: "\u6771\u4eac", raceNumber: "12R", stake: 1000, payout: 3120, memo: "BS\u30a4\u30ec\u30d6" },
+    { track: "\u6771\u4eac", raceNumber: "11R", stake: 900, payout: 550, memo: "\u30f4\u30a3\u30af\u30c8\u30ea" }
+  ]
+);
+
+const realIpatOcr = `B \u6771\u4eac 11R \u30aa- \u30af\u30b9 -
+\u8cfc\u5165 900m #HE Om \u3054
+\u8f03 \u4eac\u90fd 12R ®
+\u8cfc\u5165 600mg \u6255\u623b Om
+\u8f03 \u6771\u4eac 12R BS \u30a4\u30ec \u30d6
+\u8cfc\u5165 1000m #HE 3120m \u306b
+\u8f03 \u6771\u4eac 11R \u30f4\u30a3 \u30af\u30c8 \u30ea \u3063
+\u8cfc\u5165 900m \u6255\u623b 550g`;
+
+assert.deepEqual(
+  plain(parser.parseIpatEntries(realIpatOcr, "2026-06-01").map(({ track, raceNumber, stake, payout, memo }) => ({
+    track,
+    raceNumber,
+    stake,
+    payout,
+    memo
+  }))),
+  [
+    { track: "\u6771\u4eac", raceNumber: "11R", stake: 900, payout: 0, memo: "\u30aa\u30fc\u30af\u30b9" },
+    { track: "\u4eac\u90fd", raceNumber: "12R", stake: 600, payout: 0, memo: "" },
+    { track: "\u6771\u4eac", raceNumber: "12R", stake: 1000, payout: 3120, memo: "BS\u30a4\u30ec\u30d6" },
+    { track: "\u6771\u4eac", raceNumber: "11R", stake: 900, payout: 550, memo: "\u30f4\u30a3\u30af\u30c8\u30ea" }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
 ${cleanIpat}`);
 
 assert.equal(candidates.length, 6);
-assert.equal(getPromptCount(), 1);
+assert.equal(getPromptCount(), 2);
 assert.equal(candidates[0].raceDate, "2026-05-30");
 assert.equal(candidates.at(-1).sourceName, "ipat-2.jpg");
 

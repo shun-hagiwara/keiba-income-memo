@@ -12,7 +12,10 @@ require("node:module").Module._initPaths();
 const imagePath = process.argv[2] || process.env.TEST_IMAGE_PATH || "C:\\Users\\shagi\\Downloads\\S__274374658.jpg";
 const appUrl = process.env.TEST_APP_URL || "http://127.0.0.1:4174/";
 const raceDate = process.env.TEST_IPAT_DATE || "2026-05-30";
-const expectedRows = Number(process.env.TEST_EXPECTED_ROWS || 4);
+const secondRaceDate = process.env.TEST_IPAT_SECOND_DATE || "2026-05-31";
+const multiDate = process.env.TEST_MULTI_DATE === "1";
+const uploadFiles = multiDate ? [imagePath, imagePath] : [imagePath];
+const expectedRows = Number(process.env.TEST_EXPECTED_ROWS || (multiDate ? 8 : 4));
 
 function resolveChromeExecutable() {
   const candidates = [
@@ -55,8 +58,16 @@ try {
   });
 
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
-  await page.setInputFiles("#image-input", imagePath);
+  await page.setInputFiles("#image-input", uploadFiles);
   await page.click("#run-ocr");
+  const dates = multiDate ? [raceDate, secondRaceDate] : [raceDate];
+  for (const date of dates) {
+    await page.locator("#ipat-date-modal").waitFor({ state: "visible", timeout: 180_000 });
+    const previewBox = await page.locator("#ipat-date-preview").boundingBox();
+    assert.ok(previewBox && previewBox.width >= 300, "date modal should show a readable image preview");
+    await page.fill("#ipat-date-input", date);
+    await page.click("#ipat-date-form button[type='submit']");
+  }
 
   await page.waitForFunction(() => {
     const rows = document.querySelectorAll("#candidate-body tr").length;
@@ -84,8 +95,15 @@ try {
 
   assert.equal(result.status, "OCR完了");
   assert.equal(result.rows.length, expectedRows);
-  assert.deepEqual(result.rows.map((row) => row.race), ["京都 12R", "京都 11R", "東京 12R", "東京 11R"]);
-  assert.deepEqual(result.rows.map((row) => row.stake), ["￥200", "￥500", "￥200", "￥300"]);
+  const expectedRaces = ["京都 12R", "京都 11R", "東京 12R", "東京 11R"];
+  const expectedStakes = ["￥200", "￥500", "￥200", "￥300"];
+  assert.deepEqual(result.rows.slice(0, 4).map((row) => row.race), expectedRaces);
+  assert.deepEqual(result.rows.slice(0, 4).map((row) => row.stake), expectedStakes);
+  if (multiDate) {
+    assert.deepEqual(result.rows.slice(4).map((row) => row.race), expectedRaces);
+    assert.deepEqual(result.rows.slice(0, 4).map((row) => row.date), Array(4).fill(raceDate));
+    assert.deepEqual(result.rows.slice(4).map((row) => row.date), Array(4).fill(secondRaceDate));
+  }
   assert.ok(result.ocrText.includes("Om"), "fixture should exercise OCR amount noise");
 
   console.log(JSON.stringify({
