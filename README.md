@@ -40,8 +40,7 @@ node server.mjs
 ブラウザでは `http://127.0.0.1:4174/` を開きます。開発時の最低限の自動確認は以下です。
 
 ```powershell
-node --check app.js
-node tests/parser.test.mjs
+npm test
 git diff --check
 ```
 
