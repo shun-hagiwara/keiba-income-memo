@@ -28,6 +28,25 @@ node server.mjs
 
 ブラウザで `http://127.0.0.1:4173` を開きます。
 
+## ローカル確認とテスト
+
+`file://.../index.html` で直接開くと、OCR worker / wasm / Google OAuth / PWA系のブラウザ制約で失敗しやすいため、ローカル確認もHTTP配信で行います。
+
+```powershell
+$env:PORT=4174
+node server.mjs
+```
+
+ブラウザでは `http://127.0.0.1:4174/` を開きます。開発時の最低限の自動確認は以下です。
+
+```powershell
+node --check app.js
+node tests/parser.test.mjs
+git diff --check
+```
+
+`tests/parser.test.mjs` はSPAT4/IPATのOCRテキストパーサ確認用です。IPAT画像で `0円` が `Om`、`購入200円` が `購入200m`、`確` が別文字に崩れるケースを含めています。
+
 ## デプロイ
 
 静的ファイルだけで動くため、以下のファイルを静的ホスティングに配置できます。

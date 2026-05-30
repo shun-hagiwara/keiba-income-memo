@@ -350,13 +350,15 @@ function parseSpat4Entries(rawText) {
 
 function parseIpatRaceLine(line) {
   const compact = compactText(line);
-  const racePattern = new RegExp(`^(?:確)?(${IPAT_TRACK_PATTERN})(\\d{1,2})R(.*)$`, "i");
+  const racePattern = new RegExp(`(${IPAT_TRACK_PATTERN})(\\d{1,2})R(.*)$`, "i");
   const match = compact.match(racePattern);
   if (!match) return null;
 
   const raceName = (match[3] || "")
     .replace(/購入.*$/g, "")
     .replace(/払戻.*$/g, "")
+    .replace(/[。．・\-ー―_]+$/g, "")
+    .replace(/([ぁ-んァ-ヶ一-龠])[a-z]$/g, "$1")
     .trim();
 
   return {
@@ -368,9 +370,11 @@ function parseIpatRaceLine(line) {
 
 function parseIpatAmounts(text) {
   const compact = compactText(text);
-  const stakeMatch = compact.match(/購入([0-9０-９OoＯｏ〇○,]+)円/);
-  const payoutMatch = compact.match(/払戻([0-9０-９OoＯｏ〇○,]+)円/);
+  const stakeMatch = compact.match(/購入[^0-9０-９OoＯｏ〇○]*([0-9０-９OoＯｏ〇○,]{1,8})/);
   if (!stakeMatch) return null;
+
+  const afterStake = compact.slice((stakeMatch.index || 0) + stakeMatch[0].length);
+  const payoutMatch = afterStake.match(/(?:払戻|払|戻|#?E|H#?HE)?[^0-9０-９OoＯｏ〇○]*([0-9０-９OoＯｏ〇○,]{1,8})(?:円|m|M)?/);
 
   return {
     stake: parseIpatAmount(stakeMatch[1]),
@@ -387,7 +391,12 @@ function parseIpatEntries(rawText, raceDate = "") {
     const race = parseIpatRaceLine(lines[index]);
     if (!race) continue;
 
-    const amountWindow = lines.slice(index, index + 5).join(" ");
+    const amountLines = [lines[index]];
+    for (let offset = 1; offset <= 5 && index + offset < lines.length; offset += 1) {
+      if (parseIpatRaceLine(lines[index + offset])) break;
+      amountLines.push(lines[index + offset]);
+    }
+    const amountWindow = amountLines.join(" ");
     const amounts = parseIpatAmounts(amountWindow);
     if (!amounts?.stake) continue;
 
