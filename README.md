@@ -34,6 +34,33 @@ node server.mjs
 
 ブラウザで `http://127.0.0.1:4173` を開きます。
 
+## ローカル確認とテスト
+
+`file://.../index.html` で直接開くと、OCR worker / wasm / Google OAuth / PWA系のブラウザ制約で失敗しやすいため、ローカル確認もHTTP配信で行います。
+
+```powershell
+$env:PORT=4174
+node server.mjs
+```
+
+ブラウザでは `http://127.0.0.1:4174/` を開きます。開発時の最低限の自動確認は以下です。
+
+```powershell
+npm test
+git diff --check
+```
+
+`tests/parser.test.mjs` はSPAT4/IPATのOCRテキストパーサ確認用です。IPAT画像で `0円` が `Om`、`購入200円` が `購入200m`、`確` が別文字に崩れるケースを含めています。
+
+実画面で画像アップロードからOCR候補表示まで確認する場合は、別ターミナルで `node server.mjs` を起動したまま以下を実行します。
+
+```powershell
+$env:TEST_APP_URL="http://127.0.0.1:4174/"
+npm run test:e2e -- "C:\Users\shagi\Downloads\S__274374658.jpg"
+```
+
+このE2E確認はChrome/Edgeをヘッドレス起動し、実際に画像inputへファイルを入れて `OCRする` を押します。成功条件は、IPAT画像から `京都 12R`、`京都 11R`、`東京 12R`、`東京 11R` の4候補が出ることです。
+
 ## デプロイ
 
 静的ファイルだけで動くため、以下のファイルを静的ホスティングに配置できます。

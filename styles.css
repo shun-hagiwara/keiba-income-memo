@@ -744,9 +744,23 @@ table {
   border-bottom: 0;
 }
 
+.period-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.period-panel .period-chart-card {
+  order: 1;
+}
+
+.period-panel .table-wrap {
+  order: 2;
+}
+
 .period-chart-card {
   position: relative;
   margin-top: 16px;
+  margin-bottom: 18px;
   border: 1px solid rgba(17, 67, 87, 0.16);
   border-radius: 22px;
   background:
