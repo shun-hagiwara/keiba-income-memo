@@ -364,10 +364,10 @@ function parseSpat4Entries(rawText) {
   };
 
   const formationSections = parseSpat4FormationSections(lines, common);
-  if (formationSections.length > 1) return formationSections;
+  if (formationSections.length > 1) return finalizeSpat4Entries(formationSections, text);
 
   const parsedTickets = parseTicketRows(lines, common);
-  if (parsedTickets.length) return parsedTickets;
+  if (parsedTickets.length) return finalizeSpat4Entries(parsedTickets, text);
 
   const raceMatch = compact.match(new RegExp(`(${TRACK_PATTERN})(\\d{1,2})R`, "i"));
   const betType = firstMatch(compact, [
@@ -381,7 +381,7 @@ function parseSpat4Entries(rawText) {
 
   const selection = findSelection(lines, betType, stake);
 
-  return [{
+  return finalizeSpat4Entries([{
     ...common,
     track: raceMatch?.[1] ?? "",
     raceNumber: raceMatch?.[2] ? `${raceMatch[2]}R` : "",
@@ -391,7 +391,7 @@ function parseSpat4Entries(rawText) {
     stake,
     payout,
     refund
-  }];
+  }], text);
 }
 
 function findSpat4Race(text) {
@@ -404,6 +404,64 @@ function normalizeSpat4TicketType(text) {
   const compact = compactText(text);
   if (/フォ[-ー]?メ[-ー]?ション/.test(compact)) return "フォーメーション";
   return firstMatch(compact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
+}
+
+function normalizeSpat4Selection(value) {
+  const normalized = String(value || "").trim();
+  return /^[\]|Il１]$/.test(normalized) ? "1" : normalized;
+}
+
+function dedupeSpat4SupplementEntries(entries, text) {
+  if (!text.includes("[SPAT4 表領域補助OCR]")) return entries;
+
+  return entries.reduce((deduped, entry) => {
+    const key = [
+      entry.raceDate,
+      entry.track,
+      entry.raceNumber,
+      entry.betType,
+      entry.selection,
+      entry.stake,
+      entry.payout,
+      entry.refund
+    ].join("|");
+    const duplicateIndex = deduped.findIndex((candidate) => [
+      candidate.raceDate,
+      candidate.track,
+      candidate.raceNumber,
+      candidate.betType,
+      candidate.selection,
+      candidate.stake,
+      candidate.payout,
+      candidate.refund
+    ].join("|") === key);
+
+    if (duplicateIndex < 0) {
+      deduped.push(entry);
+    } else if (!deduped[duplicateIndex].ticketType && entry.ticketType) {
+      deduped[duplicateIndex] = entry;
+    }
+    return deduped;
+  }, []);
+}
+
+function finalizeSpat4Entries(entries, text) {
+  const deduped = dedupeSpat4SupplementEntries(entries, text);
+  const marker = "[SPAT4 表領域補助OCR]";
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex < 0) return deduped;
+
+  const supplementalEntries = parseSpat4Entries(text.slice(markerIndex + marker.length));
+  return deduped.map((entry) => {
+    if (entry.betType) return entry;
+    const matches = supplementalEntries.filter((supplement) => (
+      supplement.betType
+      && supplement.track === entry.track
+      && supplement.raceNumber === entry.raceNumber
+      && supplement.payout === entry.payout
+    ));
+    return matches.length === 1 ? { ...entry, betType: matches[0].betType } : entry;
+  });
 }
 
 function parseFormationSelection(text) {
@@ -665,7 +723,7 @@ function parseTicketLine(line) {
   return {
     track,
     raceNumber,
-    selection,
+    selection: normalizeSpat4Selection(selection),
     stake: Number(stakeText)
   };
 }
@@ -1280,6 +1338,169 @@ function updateTotals() {
   $("total-roi").textContent = `${Math.round(roi * 10) / 10}%`;
 }
 
+function isLikelySpat4Text(text) {
+  const compact = compactText(text);
+  return /SPAT4/i.test(compact)
+    || /投票内容照会/.test(compact)
+    || (/受付番号/.test(compact) && /購入件数/.test(compact));
+}
+
+function parseSpat4PurchaseCount(text) {
+  const match = compactText(text).match(/購入件数(\d{1,2})件/);
+  return match ? Number(match[1]) : 0;
+}
+
+function buildSpat4ExtractionWarning(text, entries) {
+  if (!isLikelySpat4Text(text)) return "";
+  const purchaseCount = parseSpat4PurchaseCount(text);
+  if (!purchaseCount || purchaseCount === entries.length) return "";
+  return `要確認: 購入件数${purchaseCount}件に対して${entries.length}件を抽出`;
+}
+
+function loadOcrImage(file) {
+  if (globalThis.createImageBitmap) {
+    return globalThis.createImageBitmap(file).then((image) => ({
+      image,
+      dispose: () => image.close?.()
+    }));
+  }
+
+  return new Promise((resolve, reject) => {
+    const sourceUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => resolve({
+      image,
+      dispose: () => URL.revokeObjectURL(sourceUrl)
+    });
+    image.onerror = () => {
+      URL.revokeObjectURL(sourceUrl);
+      reject(new Error("OCR image could not be loaded"));
+    };
+    image.src = sourceUrl;
+  });
+}
+
+function imageDimensions(image) {
+  return {
+    width: image.naturalWidth || image.width,
+    height: image.naturalHeight || image.height
+  };
+}
+
+function createOcrCropCanvas(image, { x, y, width, height, scale = 1 }) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, x, y, width, height, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function detectSpat4TableHeader(image) {
+  const { width, height } = imageDimensions(image);
+  const canvas = createOcrCropCanvas(image, { x: 0, y: 0, width, height });
+  const pixels = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+  const startY = Math.round(height * 0.2);
+  const endY = Math.round(height * 0.7);
+  const bands = [];
+  let activeBand = null;
+
+  for (let y = startY; y < endY; y += 1) {
+    let neutralDarkPixels = 0;
+    let sampledPixels = 0;
+    for (let x = 0; x < width; x += 4) {
+      const offset = (y * width + x) * 4;
+      const red = pixels[offset];
+      const green = pixels[offset + 1];
+      const blue = pixels[offset + 2];
+      const brightness = (red + green + blue) / 3;
+      if (Math.max(red, green, blue) - Math.min(red, green, blue) < 32 && brightness > 28 && brightness < 195) {
+        neutralDarkPixels += 1;
+      }
+      sampledPixels += 1;
+    }
+
+    if (neutralDarkPixels / sampledPixels >= 0.58) {
+      if (!activeBand) activeBand = { start: y, end: y };
+      activeBand.end = y;
+    } else if (activeBand) {
+      bands.push(activeBand);
+      activeBand = null;
+    }
+  }
+  if (activeBand) bands.push(activeBand);
+
+  return bands
+    .filter((band) => band.end - band.start >= Math.max(12, Math.round(height * 0.008)))
+    .sort((left, right) => left.start - right.start)[0] || null;
+}
+
+function normalizeSpat4SelectionSupplement(text) {
+  const compact = compactText(text);
+  if (/^[\]|Il１]$/.test(compact)) return "1";
+  const match = compact.match(/^[0-9]{1,2}(?:[-:.,][0-9]{1,2})*$/);
+  return match?.[0] || "";
+}
+
+async function recognizeSpat4TableSupplement(worker, file, purchaseCount = 0) {
+  const loaded = await loadOcrImage(file);
+  try {
+    const { image } = loaded;
+    const { width, height } = imageDimensions(image);
+    const header = detectSpat4TableHeader(image);
+    if (!header) return "";
+
+    const headerHeight = header.end - header.start + 1;
+    const tableHeight = Math.min(
+      height - header.start,
+      purchaseCount
+        ? headerHeight + Math.max(170, purchaseCount * 170)
+        : Math.max(headerHeight + 150, Math.round(height * 0.32))
+    );
+    const tableCanvas = createOcrCropCanvas(image, {
+      x: 0,
+      y: header.start,
+      width,
+      height: tableHeight,
+      scale: 2
+    });
+
+    await worker.setParameters({
+      tessedit_pageseg_mode: "6",
+      preserve_interword_spaces: "1"
+    });
+    const tableResult = await worker.recognize(tableCanvas);
+    const tableText = normalizeText(tableResult.data.text);
+
+    const selectionCanvas = createOcrCropCanvas(image, {
+      x: Math.round(width * 0.4),
+      y: Math.min(height - 1, header.end + Math.round(height * 0.02)),
+      width: Math.max(1, Math.round(width * 0.12)),
+      height: Math.max(1, Math.round(height * 0.06)),
+      scale: 4
+    });
+    await worker.setParameters({ tessedit_pageseg_mode: "10" });
+    const selectionResult = await worker.recognize(selectionCanvas);
+    const selection = normalizeSpat4SelectionSupplement(selectionResult.data.text);
+
+    await worker.setParameters({
+      tessedit_pageseg_mode: "3",
+      preserve_interword_spaces: "0"
+    });
+
+    return [
+      "[SPAT4 表領域補助OCR]",
+      tableText,
+      selection ? `[SPAT4 馬・組番補助OCR]\n${selection}` : ""
+    ].filter(Boolean).join("\n");
+  } finally {
+    loaded.dispose();
+  }
+}
+
 async function runOcr() {
   if (!state.imageFiles.length) return;
   const ocrEngine = globalThis.Tesseract;
@@ -1304,14 +1525,25 @@ async function runOcr() {
   let completedImages = 0;
   try {
     const rawTexts = [];
+    const extractionWarnings = [];
     for (const [index, file] of state.imageFiles.entries()) {
       $("ocr-status").textContent = `OCR中 ${index + 1}/${state.imageFiles.length}`;
       $("ocr-progress").textContent = `${index}/${state.imageFiles.length}枚完了`;
       updateOcrBatchProgress(index, state.imageFiles.length, { running: true });
       const result = await worker.recognize(file);
-      const text = normalizeText(result.data.text);
+      let text = normalizeText(result.data.text);
+      if (isLikelySpat4Text(text)) {
+        try {
+          const supplement = await recognizeSpat4TableSupplement(worker, file, parseSpat4PurchaseCount(text));
+          if (supplement) text = `${text}\n\n${supplement}`;
+        } catch (error) {
+          console.warn("SPAT4 table OCR supplement failed", error);
+        }
+      }
       rawTexts.push(`--- ${file.name || `${index + 1}枚目`} ---\n${text}`);
       const parsedEntries = parseEntries(text);
+      const extractionWarning = buildSpat4ExtractionWarning(text, parsedEntries);
+      if (extractionWarning) extractionWarnings.push(`${file.name || `${index + 1}枚目`}: ${extractionWarning}`);
       if (parsedEntries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
         const sourceName = file.name || `${index + 1}枚目`;
         const raceDate = await requestIpatRaceDateFromImage({
@@ -1336,7 +1568,7 @@ async function runOcr() {
       updateOcrBatchProgress(completed, state.imageFiles.length, { running: completed < state.imageFiles.length });
     }
     $("ocr-text").value = rawTexts.join("\n\n");
-    $("ocr-status").textContent = "OCR完了";
+    $("ocr-status").textContent = ["OCR完了", ...extractionWarnings].join(" / ");
     $("ocr-progress").textContent = `${state.imageFiles.length}/${state.imageFiles.length}枚完了`;
     updateOcrBatchProgress(state.imageFiles.length, state.imageFiles.length, { running: false });
     $("parse-text").disabled = false;
