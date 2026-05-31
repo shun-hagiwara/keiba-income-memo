@@ -229,6 +229,35 @@ assert.deepEqual(
   ]
 );
 
+const spat4MultiFormationOcr = `\u53d7\u4ed8 \u756a\u53f7 0003
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 05 \u6708 31 \u65e5 18:01
+\u8cfc\u5165 \u4ef6 \u6570 2 \u4ef6
+2026 \u5e74 05 \u6708 31 \u65e5 ( \u5404 200 \u5186 )
+\u4f50\u8cc0 6R \u6642 212 200 \u5186
+\u30ef\u30a4 \u30c9 9 \u7684 \u4e2d 360 \u5186
+\u30d5\u30a9 - \u30e1 -\u30b7\u30e7\u30f3
+2026 \u5e74 05 \u6708 31 \u65e5 \u99ac 1:5
+\u4f50\u8cc0 6R \u99ac 2.7 ( \u5404 100 \u5186 )
+\u4e09 \u9023 \u8907 \u99ac 3:12 100H
+\u30d5\u30a9 - \u30e1 -\u30b7\u30e7\u30f3`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4MultiFormationOcr).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-05-31", track: "\u4f50\u8cc0", raceNumber: "6R", betType: "\u30ef\u30a4\u30c9", selection: "", ticketType: "\u30d5\u30a9\u30fc\u30e1\u30fc\u30b7\u30e7\u30f3", stake: 200, payout: 360 },
+    { raceDate: "2026-05-31", track: "\u4f50\u8cc0", raceNumber: "6R", betType: "\u4e09\u9023\u8907", selection: "1:5 / 2.7 / 3:12", ticketType: "\u30d5\u30a9\u30fc\u30e1\u30fc\u30b7\u30e7\u30f3", stake: 100, payout: 0 }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---

@@ -363,6 +363,9 @@ function parseSpat4Entries(rawText) {
     raceDate: parseJapaneseDate(raceDateText || acceptedAt)
   };
 
+  const formationSections = parseSpat4FormationSections(lines, common);
+  if (formationSections.length > 1) return formationSections;
+
   const parsedTickets = parseTicketRows(lines, common);
   if (parsedTickets.length) return parsedTickets;
 
@@ -389,6 +392,66 @@ function parseSpat4Entries(rawText) {
     payout,
     refund
   }];
+}
+
+function findSpat4Race(text) {
+  const match = compactText(text).match(new RegExp(`(${TRACK_PATTERN})(\\d{1,2})R`, "i"));
+  if (!match) return null;
+  return { track: match[1], raceNumber: `${match[2]}R` };
+}
+
+function normalizeSpat4TicketType(text) {
+  const compact = compactText(text);
+  if (/フォ[-ー]?メ[-ー]?ション/.test(compact)) return "フォーメーション";
+  return firstMatch(compact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
+}
+
+function parseFormationSelection(text) {
+  const normalized = normalizeText(text);
+  const selections = [...normalized.matchAll(/馬\s*([0-9][0-9:.,-]*)/g)]
+    .map((match) => match[1].replace(/\.$/, ""))
+    .filter(Boolean);
+  return [...new Set(selections)].join(" / ");
+}
+
+function parseSpat4FormationSections(lines, common) {
+  const starts = lines
+    .map((line, index) => ({ line, index, date: parseJapaneseDate(line) }))
+    .filter(({ line, date }) => date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line));
+  if (starts.length < 2) return [];
+
+  const uniqueRaces = [...new Map(
+    lines
+      .map((line) => findSpat4Race(line))
+      .filter(Boolean)
+      .map((race) => [`${race.track}|${race.raceNumber}`, race])
+  ).values()];
+  const fallbackRace = uniqueRaces.length === 1 ? uniqueRaces[0] : null;
+
+  return starts.flatMap((start, sectionIndex) => {
+    const end = starts[sectionIndex + 1]?.index ?? lines.length;
+    const sectionLines = lines.slice(start.index, end);
+    const sectionText = sectionLines.join(" ");
+    const compact = compactText(sectionText);
+    const stakeMatch = compact.match(/各(\d{2,})円/);
+    if (!stakeMatch) return [];
+
+    const race = findSpat4Race(sectionText) || fallbackRace;
+    if (!race) return [];
+
+    return [{
+      ...common,
+      raceDate: start.date || common.raceDate,
+      track: race.track,
+      raceNumber: race.raceNumber,
+      betType: firstMatch(compact, [new RegExp(`(${BET_TYPES.join("|")})`)]),
+      selection: parseFormationSelection(sectionText),
+      ticketType: normalizeSpat4TicketType(sectionText),
+      stake: Number(stakeMatch[1]),
+      payout: parsePayout(sectionText, compact),
+      refund: parseRefund(sectionText)
+    }];
+  });
 }
 
 function parseIpatRaceLine(line) {
