@@ -72,7 +72,19 @@ try {
   });
   assert.ok(result.ocrText.includes("[SPAT4 表領域補助OCR]"));
 
-  console.log(JSON.stringify(result, null, 2));
+  await page.click("#parse-text");
+  const reflectedRows = await page.evaluate(() => [...document.querySelectorAll("#candidate-body tr")].map((row) => {
+    const cells = [...row.querySelectorAll("td")].map((cell) => cell.textContent.trim().replace(/\s+/g, " "));
+    return {
+      race: cells[2],
+      bet: cells[3],
+      stake: cells[4],
+      payout: cells[5]
+    };
+  }));
+  assert.deepEqual(reflectedRows, result.rows, "reflecting OCR text must not duplicate supplemental rows");
+
+  console.log(JSON.stringify({ ...result, reflectedRows }, null, 2));
 } finally {
   await browser.close();
 }
