@@ -339,6 +339,18 @@ function emptySpat4Entry() {
 
 function parseSpat4Entries(rawText) {
   const text = normalizeText(rawText);
+  const supplementMarker = "[SPAT4 表領域補助OCR]";
+  const supplementIndex = text.indexOf(supplementMarker);
+  if (supplementIndex >= 0) {
+    const primaryText = text.slice(0, supplementIndex);
+    const supplementalText = text.slice(supplementIndex + supplementMarker.length);
+    return mergeSpat4SupplementEntries(
+      parseSpat4Entries(primaryText),
+      parseSpat4Entries(supplementalText),
+      parseSpat4PurchaseCount(primaryText)
+    );
+  }
+
   const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
   const joined = lines.join(" ");
   const compact = compactText(joined);
@@ -364,10 +376,10 @@ function parseSpat4Entries(rawText) {
   };
 
   const formationSections = parseSpat4FormationSections(lines, common);
-  if (formationSections.length > 1) return finalizeSpat4Entries(formationSections, text);
+  if (formationSections.length > 1) return formationSections;
 
   const parsedTickets = parseTicketRows(lines, common);
-  if (parsedTickets.length) return finalizeSpat4Entries(parsedTickets, text);
+  if (parsedTickets.length) return parsedTickets;
 
   const raceMatch = compact.match(new RegExp(`(${TRACK_PATTERN})(\\d{1,2})R`, "i"));
   const betType = firstMatch(compact, [
@@ -381,7 +393,7 @@ function parseSpat4Entries(rawText) {
 
   const selection = findSelection(lines, betType, stake);
 
-  return finalizeSpat4Entries([{
+  return [{
     ...common,
     track: raceMatch?.[1] ?? "",
     raceNumber: raceMatch?.[2] ? `${raceMatch[2]}R` : "",
@@ -391,7 +403,7 @@ function parseSpat4Entries(rawText) {
     stake,
     payout,
     refund
-  }], text);
+  }];
 }
 
 function findSpat4Race(text) {
@@ -411,57 +423,66 @@ function normalizeSpat4Selection(value) {
   return /^[\]|Il１]$/.test(normalized) ? "1" : normalized;
 }
 
-function dedupeSpat4SupplementEntries(entries, text) {
-  if (!text.includes("[SPAT4 表領域補助OCR]")) return entries;
-
-  return entries.reduce((deduped, entry) => {
-    const key = [
-      entry.raceDate,
-      entry.track,
-      entry.raceNumber,
-      entry.betType,
-      entry.selection,
-      entry.stake,
-      entry.payout,
-      entry.refund
-    ].join("|");
-    const duplicateIndex = deduped.findIndex((candidate) => [
-      candidate.raceDate,
-      candidate.track,
-      candidate.raceNumber,
-      candidate.betType,
-      candidate.selection,
-      candidate.stake,
-      candidate.payout,
-      candidate.refund
-    ].join("|") === key);
-
-    if (duplicateIndex < 0) {
-      deduped.push(entry);
-    } else if (!deduped[duplicateIndex].ticketType && entry.ticketType) {
-      deduped[duplicateIndex] = entry;
-    }
-    return deduped;
-  }, []);
+function spat4EntriesAreCompatible(primary, supplement) {
+  const fields = ["raceDate", "track", "raceNumber", "betType", "ticketType"];
+  if (fields.some((field) => primary[field] && supplement[field] && primary[field] !== supplement[field])) return false;
+  if (
+    primary.stake
+    && supplement.stake
+    && primary.stake !== supplement.stake
+    && !(primary.payout && primary.payout === supplement.payout)
+  ) return false;
+  if (primary.payout && supplement.payout && primary.payout !== supplement.payout) return false;
+  return true;
 }
 
-function finalizeSpat4Entries(entries, text) {
-  const deduped = dedupeSpat4SupplementEntries(entries, text);
-  const marker = "[SPAT4 表領域補助OCR]";
-  const markerIndex = text.indexOf(marker);
-  if (markerIndex < 0) return deduped;
+function spat4EntrySimilarity(primary, supplement) {
+  if (!spat4EntriesAreCompatible(primary, supplement)) return -1;
+  let score = 0;
+  if (primary.raceDate && primary.raceDate === supplement.raceDate) score += 1;
+  if (primary.track && primary.track === supplement.track) score += 4;
+  if (primary.raceNumber && primary.raceNumber === supplement.raceNumber) score += 4;
+  if (primary.betType && primary.betType === supplement.betType) score += 2;
+  if (primary.ticketType && primary.ticketType === supplement.ticketType) score += 1;
+  if (primary.stake && primary.stake === supplement.stake) score += 3;
+  if (primary.payout && primary.payout === supplement.payout) score += 3;
+  return score;
+}
 
-  const supplementalEntries = parseSpat4Entries(text.slice(markerIndex + marker.length));
-  return deduped.map((entry) => {
-    if (entry.betType) return entry;
-    const matches = supplementalEntries.filter((supplement) => (
-      supplement.betType
-      && supplement.track === entry.track
-      && supplement.raceNumber === entry.raceNumber
-      && supplement.payout === entry.payout
-    ));
-    return matches.length === 1 ? { ...entry, betType: matches[0].betType } : entry;
-  });
+function mergeSpat4Entry(primary, supplement) {
+  return {
+    ...primary,
+    raceDate: primary.raceDate || supplement.raceDate,
+    track: primary.track || supplement.track,
+    raceNumber: primary.raceNumber || supplement.raceNumber,
+    betType: primary.betType || supplement.betType,
+    selection: primary.selection || supplement.selection,
+    ticketType: primary.ticketType || supplement.ticketType,
+    stake: primary.stake || supplement.stake,
+    payout: primary.payout || supplement.payout,
+    refund: primary.refund || supplement.refund
+  };
+}
+
+function mergeSpat4SupplementEntries(primaryEntries, supplementalEntries, purchaseCount = 0) {
+  const merged = primaryEntries.map((entry) => ({ ...entry }));
+
+  for (const supplement of supplementalEntries) {
+    const matches = merged
+      .map((entry, index) => ({ index, score: spat4EntrySimilarity(entry, supplement) }))
+      .filter(({ score }) => score >= 3)
+      .sort((left, right) => right.score - left.score);
+    const best = matches[0];
+    const hasUniqueBest = best && (!matches[1] || best.score > matches[1].score);
+
+    if (hasUniqueBest) {
+      merged[best.index] = mergeSpat4Entry(merged[best.index], supplement);
+    } else if (!merged.length || !purchaseCount || merged.length < purchaseCount) {
+      merged.push(supplement);
+    }
+  }
+
+  return purchaseCount ? merged.slice(0, purchaseCount) : merged;
 }
 
 function parseFormationSelection(text) {
