@@ -258,6 +258,71 @@ assert.deepEqual(
   ]
 );
 
+const spat4SupplementedSingleOcr = `\u53d7\u4ed8 \u756a\u53f7 0004
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 05 \u6708 31 \u65e5 18:23
+\u8cfc\u5165 \u4ef6 \u6570 1 \u4ef6
+\u5358 \u52dd
+\u901a \u5e38
+[SPAT4 \u8868\u9818\u57df\u88dc\u52a9OCR]
+\u30ec\u30fc\u30b9/\u5f0f\u5225 \u99ac/\u7d44\u756a \u6295\u7968\u91d1\u984d
+2026\u5e7405\u670831\u65e5
+\u4f50\u8cc08R 200\u5186
+\u5358\u52dd
+\u901a\u5e38
+[SPAT4 \u99ac\u30fb\u7d44\u756a\u88dc\u52a9OCR]
+1`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SupplementedSingleOcr).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-05-31", track: "\u4f50\u8cc0", raceNumber: "8R", betType: "\u5358\u52dd", selection: "1", ticketType: "\u901a\u5e38", stake: 200, payout: 0 }
+  ]
+);
+
+const spat4SupplementedFormationOcr = `\u53d7\u4ed8 \u756a\u53f7 0003
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 05 \u6708 31 \u65e5 18:01
+\u8cfc\u5165 \u4ef6 \u6570 2 \u4ef6
+2026 \u5e74 05 \u6708 31 \u65e5 ( \u5404 200 \u5186
+71RK \u7684 \u4e2d 360 \u5186
+\u30d5\u30a9 - \u30e1 -\u30b7\u30e7\u30f3
+2026 \u5e74 05 \u6708 31 \u65e5
+\u4f50\u8cc0 6R ( \u5404 100 \u5186 )
+\u4e09 \u9023 \u8907 \u99ac 3:12 1
+\u30d5\u30a9 - \u30e1 -\u30b7\u30e7\u30f3
+[SPAT4 \u8868\u9818\u57df\u88dc\u52a9OCR]
+\u30ec-\u30b9/\u5f0f\u5225 \u99ac/\u7d44\u756a \u6295\u7968\u91d1\u984d
+2026\u5e7405\u670831\u65e5
+\u30ef\u30a4\u30c9 \u99ac2:1 \u7684\u4e2d 360\u5186
+\u30d5\u30a9-\u30e1-\u30b7\u30e7\u30f3
+2026\u5e7405\u670831\u65e5
+\u4f50\u8cc06R ( \u5404 100\u5186 )
+\u4e09\u9023\u8907 \u99ac3:12`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SupplementedFormationOcr).map(({ track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { track: "\u4f50\u8cc0", raceNumber: "6R", betType: "\u30ef\u30a4\u30c9", selection: "", ticketType: "\u30d5\u30a9\u30fc\u30e1\u30fc\u30b7\u30e7\u30f3", stake: 200, payout: 360 },
+    { track: "\u4f50\u8cc0", raceNumber: "6R", betType: "\u4e09\u9023\u8907", selection: "3:12", ticketType: "\u30d5\u30a9\u30fc\u30e1\u30fc\u30b7\u30e7\u30f3", stake: 100, payout: 0 }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
