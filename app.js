@@ -58,7 +58,7 @@ const moneyFormat = new Intl.NumberFormat("ja-JP", {
 const TRACK_NAMES = ["門別", "盛岡", "水沢", "浦和", "船橋", "大井", "川崎", "金沢", "笠松", "名古屋", "園田", "姫路", "高知", "佐賀", "帯広"];
 const IPAT_TRACK_NAMES = ["札幌", "函館", "福島", "新潟", "東京", "中山", "中京", "京都", "阪神", "小倉"];
 const BET_TYPES = ["三連単", "三連複", "3連単", "3連複", "ワイド", "枠複", "馬複", "枠単", "馬単", "単勝", "複勝"];
-const TICKET_TYPES = ["フォーメーション", "ボックス", "流し", "通常"];
+const TICKET_TYPES = ["フォーメーション", "軸2頭流し", "ボックス", "流し", "通常"];
 const TRACK_PATTERN = TRACK_NAMES.join("|");
 const IPAT_TRACK_PATTERN = IPAT_TRACK_NAMES.join("|");
 
@@ -376,7 +376,13 @@ function parseSpat4Entries(rawText) {
   };
 
   const formationSections = parseSpat4FormationSections(lines, common);
-  if (formationSections.length > 1) return formationSections;
+  if (formationSections.length) return formationSections;
+
+  const dateSections = parseSpat4DateSections(lines, common);
+  if (
+    dateSections.length > 1
+    || dateSections.some((entry) => ["軸2頭流し", "流し"].includes(entry.ticketType))
+  ) return dateSections;
 
   const parsedTickets = parseTicketRows(lines, common);
   if (parsedTickets.length) return parsedTickets;
@@ -493,11 +499,98 @@ function parseFormationSelection(text) {
   return [...new Set(selections)].join(" / ");
 }
 
+function normalizeSpat4NumberList(value) {
+  const numbers = String(value || "").match(/\d{1,2}/g) || [];
+  return numbers.join(",");
+}
+
+function parseSpat4SectionSelection(text, race, betType, stake) {
+  const normalized = normalizeText(text);
+  const axisMatch = normalized.match(/軸\s*[:：]?\s*([0-9][0-9,.\-\s]*)\s*\(/);
+  const axis = normalizeSpat4NumberList(axisMatch?.[1]);
+
+  if (axis && betType) {
+    const spacedBetType = betType.split("").map(escapeRegExp).join("\\s*");
+    const afterBet = normalized.match(new RegExp(`${spacedBetType}([\\s\\S]*)`))?.[1] || "";
+    const beforeStake = stake ? afterBet.replace(new RegExp(`${stake}\\s*円[\\s\\S]*$`), "") : afterBet;
+    const targets = normalizeSpat4NumberList(beforeStake);
+    return targets ? `軸:${axis} / ${targets}` : `軸:${axis}`;
+  }
+
+  if (race?.track) {
+    const trackSelection = normalized.match(new RegExp(`${escapeRegExp(race.track)}\\s*([0-9]{1,2})\\s*的\\s*中`));
+    if (trackSelection?.[1]) return trackSelection[1];
+  }
+  const hitSelection = normalized.match(/(?:^|\s)(\d{1,2})\s*的\s*中/);
+  if (hitSelection?.[1]) return hitSelection[1];
+  return "";
+}
+
+function parseSpat4SectionStake(lines, betType, payout) {
+  const ranked = [];
+  for (const line of lines) {
+    if (isExcludedAmountLine(line) || /的\s*中|返\s*還/.test(line)) continue;
+    const amounts = [...line.matchAll(/(\d{2,})\s*円/g)].map((match) => Number(match[1]));
+    for (const amount of amounts) {
+      if (amount === payout) continue;
+      ranked.push({
+        amount,
+        priority: (betType && compactText(line).includes(betType) ? 4 : 0)
+          + (/\d{1,2}\s*R/i.test(line) ? 2 : 0)
+          - (/各\s*\d{2,}\s*円/.test(line) ? 1 : 0)
+      });
+    }
+  }
+  return ranked.sort((left, right) => right.priority - left.priority)[0]?.amount || 0;
+}
+
+function parseSpat4DateSections(lines, common) {
+  const starts = lines
+    .map((line, index) => ({ line, index, date: parseJapaneseDate(line) }))
+    .filter(({ line, date }) => date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line));
+  if (!starts.length) return [];
+
+  const uniqueRaces = [...new Map(
+    lines
+      .map((line) => findSpat4Race(line))
+      .filter(Boolean)
+      .map((race) => [`${race.track}|${race.raceNumber}`, race])
+  ).values()];
+  const fallbackRace = uniqueRaces.length === 1 ? uniqueRaces[0] : null;
+
+  return starts.flatMap((start, sectionIndex) => {
+    const end = starts[sectionIndex + 1]?.index ?? lines.length;
+    const sectionLines = lines.slice(start.index, end);
+    const sectionText = sectionLines.join(" ");
+    const compact = compactText(sectionText);
+    const race = findSpat4Race(sectionText) || fallbackRace;
+    if (!race) return [];
+
+    const betType = firstMatch(compact, [new RegExp(`(${BET_TYPES.join("|")})`)]);
+    const payout = parsePayout(sectionText, compact);
+    const stake = parseSpat4SectionStake(sectionLines, betType, payout);
+    if (!stake) return [];
+
+    return [{
+      ...common,
+      raceDate: start.date || common.raceDate,
+      track: race.track,
+      raceNumber: race.raceNumber,
+      betType,
+      selection: parseSpat4SectionSelection(sectionText, race, betType, stake),
+      ticketType: normalizeSpat4TicketType(sectionText),
+      stake,
+      payout,
+      refund: parseRefund(sectionText)
+    }];
+  });
+}
+
 function parseSpat4FormationSections(lines, common) {
   const starts = lines
     .map((line, index) => ({ line, index, date: parseJapaneseDate(line) }))
     .filter(({ line, date }) => date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line));
-  if (starts.length < 2) return [];
+  if (!starts.length) return [];
 
   const uniqueRaces = [...new Map(
     lines
@@ -514,6 +607,7 @@ function parseSpat4FormationSections(lines, common) {
     const compact = compactText(sectionText);
     const stakeMatch = compact.match(/各(\d{2,})円/);
     if (!stakeMatch) return [];
+    if (normalizeSpat4TicketType(sectionText) !== "フォーメーション") return [];
 
     const race = findSpat4Race(sectionText) || fallbackRace;
     if (!race) return [];
@@ -1459,6 +1553,53 @@ function detectSpat4TableHeader(image) {
     .sort((left, right) => left.start - right.start)[0] || null;
 }
 
+function detectSpat4TableRows(image, header, purchaseCount) {
+  if (!purchaseCount) return [];
+  const { width, height } = imageDimensions(image);
+  const canvas = createOcrCropCanvas(image, { x: 0, y: 0, width, height });
+  const pixels = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, width, height).data;
+  const bodyStart = header.end + 1;
+  const scanEnd = Math.min(height, bodyStart + purchaseCount * 260);
+  const separatorBands = [];
+  let activeBand = null;
+
+  for (let y = bodyStart + 40; y < scanEnd; y += 1) {
+    let neutralPixels = 0;
+    let sampledPixels = 0;
+    for (let x = 0; x < width; x += 4) {
+      const offset = (y * width + x) * 4;
+      const red = pixels[offset];
+      const green = pixels[offset + 1];
+      const blue = pixels[offset + 2];
+      const brightness = (red + green + blue) / 3;
+      if (Math.max(red, green, blue) - Math.min(red, green, blue) < 24 && brightness > 75 && brightness < 245) {
+        neutralPixels += 1;
+      }
+      sampledPixels += 1;
+    }
+
+    if (neutralPixels / sampledPixels >= 0.9) {
+      if (!activeBand) activeBand = { start: y, end: y };
+      activeBand.end = y;
+    } else if (activeBand) {
+      separatorBands.push(activeBand);
+      activeBand = null;
+    }
+  }
+  if (activeBand) separatorBands.push(activeBand);
+
+  const rows = [];
+  let rowStart = bodyStart;
+  for (const separator of separatorBands) {
+    if (separator.start - rowStart >= 60) {
+      rows.push({ y: rowStart, height: separator.start - rowStart });
+      rowStart = separator.end + 1;
+      if (rows.length >= purchaseCount) break;
+    }
+  }
+  return rows;
+}
+
 function normalizeSpat4SelectionSupplement(text) {
   const compact = compactText(text);
   if (/^[\]|Il１]$/.test(compact)) return "1";
@@ -1495,6 +1636,18 @@ async function recognizeSpat4TableSupplement(worker, file, purchaseCount = 0) {
     });
     const tableResult = await worker.recognize(tableCanvas);
     const tableText = normalizeText(tableResult.data.text);
+    const rowTexts = [];
+    for (const row of purchaseCount > 1 ? detectSpat4TableRows(image, header, purchaseCount) : []) {
+      const rowCanvas = createOcrCropCanvas(image, {
+        x: 0,
+        y: row.y,
+        width,
+        height: row.height,
+        scale: 3
+      });
+      const rowResult = await worker.recognize(rowCanvas);
+      rowTexts.push(normalizeText(rowResult.data.text));
+    }
 
     const selectionCanvas = createOcrCropCanvas(image, {
       x: Math.round(width * 0.4),
@@ -1514,6 +1667,7 @@ async function recognizeSpat4TableSupplement(worker, file, purchaseCount = 0) {
 
     return [
       "[SPAT4 表領域補助OCR]",
+      rowTexts.length ? rowTexts.join("\n") : "",
       tableText,
       selection ? `[SPAT4 馬・組番補助OCR]\n${selection}` : ""
     ].filter(Boolean).join("\n");
