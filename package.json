@@ -3,6 +3,7 @@
     "test": "node --check app.js && node tests/parser.test.mjs",
     "test:e2e": "node tests/upload-ocr-smoke.mjs",
     "test:e2e:spat4": "node tests/spat4-table-ocr-smoke.mjs",
-    "test:e2e:spat4-flow": "node tests/spat4-trifecta-flow-ocr-smoke.mjs"
+    "test:e2e:spat4-flow": "node tests/spat4-trifecta-flow-ocr-smoke.mjs",
+    "test:e2e:spat4-all": "node tests/spat4-all-images-smoke.mjs"
   }
 }

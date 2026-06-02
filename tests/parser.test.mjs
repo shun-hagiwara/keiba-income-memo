@@ -427,6 +427,34 @@ assert.deepEqual(
   ]
 );
 
+const spat4MergedSingleAxisFlowOcr = `\u53d7\u4ed8 \u756a\u53f7 0002
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 06 \u6708 02 \u65e5 18:51
+\u8cfc\u5165 \u4ef6 \u6570 1 \u4ef6
+2026 \u5e74 06 \u6708 02 \u65e5
+\u8ef8 :7 8 ( \u5404 100 \u5186 )
+\u540d \u53e4\u5c4b 1 OR 46 200 \u5186
+\u8ef8 2 \u982d \u6d41\u3057
+[\u0053\u0050\u0041\u0054\u0034 \u8868\u9818\u57df\u88dc\u52a9\u004f\u0043\u0052]
+\u30ec-\u30b9/\u5f0f\u5225 \u99ac/\u7d44\u756a \u6295\u7968\u91d1\u984d
+2026\u5e7406\u670802\u65e5
+\u540d\u53e4\u5c4b10\u0052 \u8ef8:7 8 (\u5404100\u5186)
+\u4e09\u9023\u8907 4 6 200\u5186
+\u8ef82\u982d\u6d41\u3057`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4MergedSingleAxisFlowOcr).map(({ track, raceNumber, betType, selection, ticketType, stake }) => ({
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake
+  }))),
+  [
+    { track: "\u540d\u53e4\u5c4b", raceNumber: "10R", betType: "\u4e09\u9023\u8907", selection: "\u8ef8:7,8 / 4,6", ticketType: "\u8ef82\u982d\u6d41\u3057", stake: 200 }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
@@ -436,5 +464,14 @@ assert.equal(candidates.length, 6);
 assert.equal(getPromptCount(), 2);
 assert.equal(candidates[0].raceDate, "2026-05-30");
 assert.equal(candidates.at(-1).sourceName, "ipat-2.jpg");
+
+const reparsedCandidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
+${noisyIpat}
+--- ipat-2.jpg ---
+${cleanIpat}`, { requestMissingIpatDate: false });
+const preservedCandidates = parser.preserveIpatRaceDates(reparsedCandidates, candidates);
+assert.equal(getPromptCount(), 2);
+assert.equal(preservedCandidates[0].raceDate, "2026-05-30");
+assert.equal(preservedCandidates.at(-1).raceDate, "2026-05-30");
 
 console.log("parser tests passed");
