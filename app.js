@@ -270,6 +270,21 @@ function setIpatRaceDate(entries, raceDate) {
   });
 }
 
+function preserveIpatRaceDates(entries, previousEntries) {
+  const raceDatesBySource = new Map();
+  previousEntries.forEach((entry) => {
+    if (entry.service === "IPAT" && entry.sourceName && entry.raceDate) {
+      raceDatesBySource.set(entry.sourceName, entry.raceDate);
+    }
+  });
+
+  return entries.map((entry) => (
+    entry.service === "IPAT" && !entry.raceDate && raceDatesBySource.has(entry.sourceName)
+      ? { ...entry, raceDate: raceDatesBySource.get(entry.sourceName) }
+      : entry
+  ));
+}
+
 function closeIpatDateModal(raceDate = "") {
   const modal = $("ipat-date-modal");
   modal.hidden = true;
@@ -437,6 +452,7 @@ function spat4EntriesAreCompatible(primary, supplement) {
     && supplement.stake
     && primary.stake !== supplement.stake
     && !(primary.payout && primary.payout === supplement.payout)
+    && !(!primary.betType && supplement.betType)
   ) return false;
   if (primary.payout && supplement.payout && primary.payout !== supplement.payout) return false;
   return true;
@@ -447,8 +463,12 @@ function spat4EntrySimilarity(primary, supplement) {
   let score = 0;
   if (primary.raceDate && primary.raceDate === supplement.raceDate) score += 1;
   if (primary.track && primary.track === supplement.track) score += 4;
+  else if (!primary.track && supplement.track) score += 2;
   if (primary.raceNumber && primary.raceNumber === supplement.raceNumber) score += 4;
-  if (primary.betType && primary.betType === supplement.betType) score += 2;
+  else if (!primary.raceNumber && supplement.raceNumber) score += 2;
+  if (primary.betType && primary.betType === supplement.betType) score += 3;
+  else if (!primary.betType && supplement.betType) score += 3;
+  if (!primary.selection && supplement.selection) score += 2;
   if (primary.ticketType && primary.ticketType === supplement.ticketType) score += 1;
   if (primary.stake && primary.stake === supplement.stake) score += 3;
   if (primary.payout && primary.payout === supplement.payout) score += 3;
@@ -456,6 +476,7 @@ function spat4EntrySimilarity(primary, supplement) {
 }
 
 function mergeSpat4Entry(primary, supplement) {
+  const preferSupplementStake = !primary.betType && Boolean(supplement.betType) && !primary.payout;
   return {
     ...primary,
     raceDate: primary.raceDate || supplement.raceDate,
@@ -464,7 +485,7 @@ function mergeSpat4Entry(primary, supplement) {
     betType: primary.betType || supplement.betType,
     selection: primary.selection || supplement.selection,
     ticketType: primary.ticketType || supplement.ticketType,
-    stake: primary.stake || supplement.stake,
+    stake: preferSupplementStake ? (supplement.stake || primary.stake) : (primary.stake || supplement.stake),
     payout: primary.payout || supplement.payout,
     refund: primary.refund || supplement.refund
   };
@@ -1005,11 +1026,11 @@ function toRecord(entry) {
   };
 }
 
-function parseTextToCandidates(rawText) {
+function parseTextToCandidates(rawText, { requestMissingIpatDate = true } = {}) {
   const blocks = splitOcrBlocks(rawText);
   return blocks.flatMap((block, index) => {
     const entries = parseEntries(block.text);
-    if (entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
+    if (requestMissingIpatDate && entries.some((entry) => entry.service === "IPAT" && !entry.raceDate)) {
       applyIpatRaceDate(entries, requestIpatRaceDate);
     }
     return entries.map((entry, entryIndex) => ({
@@ -1637,7 +1658,7 @@ async function recognizeSpat4TableSupplement(worker, file, purchaseCount = 0) {
     const tableResult = await worker.recognize(tableCanvas);
     const tableText = normalizeText(tableResult.data.text);
     const rowTexts = [];
-    for (const row of purchaseCount > 1 ? detectSpat4TableRows(image, header, purchaseCount) : []) {
+    for (const row of detectSpat4TableRows(image, header, purchaseCount)) {
       const rowCanvas = createOcrCropCanvas(image, {
         x: 0,
         y: row.y,
@@ -2215,7 +2236,8 @@ async function handleImageSelection(event) {
 $("run-ocr").addEventListener("click", runOcr);
 $("clear-image").addEventListener("click", resetImage);
 $("parse-text").addEventListener("click", () => {
-  state.candidates = parseTextToCandidates($("ocr-text").value);
+  const parsedCandidates = parseTextToCandidates($("ocr-text").value, { requestMissingIpatDate: false });
+  state.candidates = preserveIpatRaceDates(parsedCandidates, state.candidates);
   renderCandidates();
   if (state.candidates[0]) applyParsedEntry(state.candidates[0]);
 });
@@ -2383,5 +2405,6 @@ globalThis.keibaMemoParser = {
   parseIpatEntries,
   parseEntries,
   parseTextToCandidates,
+  preserveIpatRaceDates,
   normalizeDateInput
 };
