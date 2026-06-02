@@ -323,6 +323,110 @@ assert.deepEqual(
   ]
 );
 
+const spat4AxisFlowOcr = `\u53d7\u4ed8 \u756a\u53f7 0005
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 06 \u6708 02 \u65e5 20:23
+\u8cfc\u5165 \u4ef6 \u6570 2 \u4ef6
+2026 \u5e74 06 \u6708 02 \u65e5
+j \u6109 12R 200 \u5186
+\u9047 \u4eba 8 \u7684 \u4e2d 480 \u5186
+\u901a\u5e38
+2026 \u5e74 06 \u6708 02 \u65e5
+\u8239\u6a4b 12R \u8ef8 :1 8 ( \u5404 100 \u5186 )
+\u4e09 \u9023 \u8907 5 6 200 \u5186
+\u8ef8 2 \u982d \u6d41\u3057
+[SPAT4 \u8868\u9818\u57df\u88dc\u52a9OCR]
+2026\u5e7406\u670802\u65e5
+\u8239\u6a4b12R 200\u5186
+\u5358\u52dd \u65e5 \u7684\u4e2d 480\u5186
+\u901a\u5e38
+2026\u5e7406\u670802\u65e5
+5 \u8ef8:1 8 (\u5404100\u5186)
+\u8ef82\u982d\u6d41\u3057`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4AxisFlowOcr).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-02", track: "\u8239\u6a4b", raceNumber: "12R", betType: "\u5358\u52dd", selection: "8", ticketType: "\u901a\u5e38", stake: 200, payout: 480 },
+    { raceDate: "2026-06-02", track: "\u8239\u6a4b", raceNumber: "12R", betType: "\u4e09\u9023\u8907", selection: "\u8ef8:1,8 / 5,6", ticketType: "\u8ef82\u982d\u6d41\u3057", stake: 200, payout: 0 }
+  ]
+);
+
+const spat4SingleFormationOcr = `\u53d7\u4ed8 \u756a\u53f7 0001
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 06 \u6708 02 \u65e5 18:44
+\u8cfc\u5165 \u4ef6 \u6570 1 \u4ef6
+2026 \u5e74 06 \u6708 02 \u65e5
+\u91d1\u6ca2 12R \u99ac 1:1 ( \u5404 500 \u5186 )
+\u30ef\u30a4 \u30c9 \u99ac 2:7 500 \u5186
+\u30d5\u30a9 - \u30e1 -\u30b7\u30e7\u30f3`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleFormationOcr).map(({ track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { track: "\u91d1\u6ca2", raceNumber: "12R", betType: "\u30ef\u30a4\u30c9", selection: "1:1 / 2:7", ticketType: "\u30d5\u30a9\u30fc\u30e1\u30fc\u30b7\u30e7\u30f3", stake: 500, payout: 0 }
+  ]
+);
+
+const spat4SingleAxisFlowOcr = `\u53d7\u4ed8 \u756a\u53f7 0002
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 06 \u6708 02 \u65e5 18:51
+\u8cfc\u5165 \u4ef6 \u6570 1 \u4ef6
+2026 \u5e74 06 \u6708 02 \u65e5
+\u540d \u53e4\u5c4b 10R \u8ef8 :7 8 ( \u5404 100 \u5186 )
+\u4e09 \u9023 \u8907 4 6 200\u5186
+\u8ef8 2 \u982d \u6d41\u3057`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleAxisFlowOcr).map(({ track, raceNumber, betType, selection, ticketType, stake }) => ({
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake
+  }))),
+  [
+    { track: "\u540d\u53e4\u5c4b", raceNumber: "10R", betType: "\u4e09\u9023\u8907", selection: "\u8ef8:7,8 / 4,6", ticketType: "\u8ef82\u982d\u6d41\u3057", stake: 200 }
+  ]
+);
+
+const spat4SingleFlowOcr = `\u53d7\u4ed8 \u756a\u53f7 0004
+\u53d7\u4ed8 \u65e5 \u6642 2026 \u5e74 06 \u6708 02 \u65e5 19:34
+\u8cfc\u5165 \u4ef6 \u6570 1 \u4ef6
+2026 \u5e74 06 \u6708 02 \u65e5
+\u8239\u6a4b 11R \u8ef8 :2 ( \u5404 100 \u5186 )
+\u30ef\u30a4 \u30c9 4 10 200 \u5186
+\u6d41\u3057`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleFlowOcr).map(({ track, raceNumber, betType, selection, ticketType, stake }) => ({
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake
+  }))),
+  [
+    { track: "\u8239\u6a4b", raceNumber: "11R", betType: "\u30ef\u30a4\u30c9", selection: "\u8ef8:2 / 4,10", ticketType: "\u6d41\u3057", stake: 200 }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
