@@ -16,7 +16,7 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script type="module" src="./app.js?v=20260606-1"></script>
+    <script type="module" src="./app.js?v=20260606-2"></script>
   </head>
   <body>
     <header class="app-header">
@@ -276,7 +276,7 @@
           <div class="period-chart-topline">
             <div>
               <p class="eyebrow">PROFIT TREND</p>
-              <h3 id="period-chart-title">収支推移</h3>
+              <h3 id="period-chart-title">累計収支推移</h3>
             </div>
             <div class="period-chart-summary">
               <span id="chart-latest">最新 0円</span>
@@ -285,7 +285,7 @@
             </div>
           </div>
           <div id="period-chart-empty" class="chart-empty">保存済み履歴が増えると、ここに収支の流れが表示されます。</div>
-          <svg id="period-chart" class="period-chart" viewBox="0 0 720 260" role="img" aria-label="期間別収支の折れ線グラフ"></svg>
+          <svg id="period-chart" class="period-chart" viewBox="0 0 720 260" role="img" aria-label="期間別累計収支の折れ線グラフ"></svg>
         </div>
       </section>
 

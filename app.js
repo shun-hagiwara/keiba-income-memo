@@ -1419,7 +1419,7 @@ function renderPeriodSummary() {
     body.append(row);
   }
 
-  renderPeriodChart(rows);
+  renderPeriodChart(cumulativeRows);
 }
 
 function getPeriodRows() {
@@ -1516,11 +1516,11 @@ function renderPeriodChart(rows) {
   chart.hidden = rows.length === 0;
 
   const latest = rows[rows.length - 1];
-  const best = rows.reduce((current, item) => (!current || item.profit > current.profit ? item : current), null);
-  const worst = rows.reduce((current, item) => (!current || item.profit < current.profit ? item : current), null);
-  $("chart-latest").textContent = `最新 ${moneyFormat.format(latest?.profit || 0)}`;
-  $("chart-best").textContent = `最高 ${moneyFormat.format(best?.profit || 0)}`;
-  $("chart-worst").textContent = `最低 ${moneyFormat.format(worst?.profit || 0)}`;
+  const best = rows.reduce((current, item) => (!current || item.cumulativeProfit > current.cumulativeProfit ? item : current), null);
+  const worst = rows.reduce((current, item) => (!current || item.cumulativeProfit < current.cumulativeProfit ? item : current), null);
+  $("chart-latest").textContent = `最新 ${moneyFormat.format(latest?.cumulativeProfit || 0)}`;
+  $("chart-best").textContent = `最高 ${moneyFormat.format(best?.cumulativeProfit || 0)}`;
+  $("chart-worst").textContent = `最低 ${moneyFormat.format(worst?.cumulativeProfit || 0)}`;
 
   if (!rows.length) return;
 
@@ -1529,13 +1529,13 @@ function renderPeriodChart(rows) {
   const padding = { top: 24, right: 28, bottom: 46, left: 76 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const values = rows.map((item) => item.profit);
+  const values = rows.map((item) => item.cumulativeProfit);
   const { topValue, bottomValue, gridValues } = getNiceChartScale(values);
   const valueRange = Math.max(1, topValue - bottomValue);
 
   const xFor = (index) => padding.left + (rows.length === 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth);
   const yFor = (value) => padding.top + ((topValue - value) / valueRange) * plotHeight;
-  const points = rows.map((item, index) => ({ ...item, x: xFor(index), y: yFor(item.profit) }));
+  const points = rows.map((item, index) => ({ ...item, x: xFor(index), y: yFor(item.cumulativeProfit) }));
   const zeroY = yFor(0);
   const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
   const lastPoint = points[points.length - 1];
@@ -1576,9 +1576,9 @@ function renderPeriodChart(rows) {
   }
 
   for (const point of points) {
-    const group = svg("g", { class: point.profit >= 0 ? "chart-point positive-point" : "chart-point negative-point" });
+    const group = svg("g", { class: point.cumulativeProfit >= 0 ? "chart-point positive-point" : "chart-point negative-point" });
     group.append(svg("circle", { cx: point.x, cy: point.y, r: 5 }));
-    group.append(svg("title", {}, `${formatPeriodLabel(point.key, state.periodMode)} ${moneyFormat.format(point.profit)}`));
+    group.append(svg("title", {}, `${formatPeriodLabel(point.key, state.periodMode)} ${moneyFormat.format(point.cumulativeProfit)}`));
     chart.append(group);
   }
 }
