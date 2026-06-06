@@ -1404,14 +1404,16 @@ function renderPeriodSummary() {
     return;
   }
 
-  for (const item of [...rows].sort((a, b) => String(b.key).localeCompare(String(a.key)))) {
+  const cumulativeRows = getCumulativePeriodRows(rows);
+
+  for (const item of [...cumulativeRows].sort((a, b) => String(b.key).localeCompare(String(a.key)))) {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td data-label="期間">${escapeHtml(formatPeriodLabel(item.key, state.periodMode))}</td>
       <td data-label="件数" class="money">${item.count}</td>
       <td data-label="購入" class="money">${moneyFormat.format(item.stake)}</td>
       <td data-label="払戻+返還" class="money">${moneyFormat.format(item.returnAmount)}</td>
-      <td data-label="収支" class="money ${item.profit >= 0 ? "positive" : "negative"}">${moneyFormat.format(item.profit)}</td>
+      <td data-label="累計収支" class="money ${item.cumulativeProfit >= 0 ? "positive" : "negative"}">${moneyFormat.format(item.cumulativeProfit)}</td>
       <td data-label="回収率" class="money">${Math.round(item.roi * 10) / 10}%</td>
     `;
     body.append(row);
@@ -1442,6 +1444,25 @@ function getPeriodRows() {
       };
     })
     .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+}
+
+function getCumulativePeriodRows(rows) {
+  let runningStake = 0;
+  let runningReturn = 0;
+
+  return [...rows]
+    .sort((a, b) => String(a.key).localeCompare(String(b.key)))
+    .map((item) => {
+      runningStake += Number(item.stake || 0);
+      runningReturn += Number(item.returnAmount || 0);
+      const cumulativeProfit = runningReturn - runningStake;
+      return {
+        ...item,
+        cumulativeStake: runningStake,
+        cumulativeReturn: runningReturn,
+        cumulativeProfit
+      };
+    });
 }
 
 function niceChartStep(rawStep) {
