@@ -455,6 +455,219 @@ assert.deepEqual(
   ]
 );
 
+const spat4June5OcrPatterns = `受付 番号 0001
+受付 日 時 2026 年 06 月 05 日 18:20
+購入 件 数 2 件
+2020 0 月 05 日
+船橋 8R 馬 1:3 ( 衝 100 同
+馬 複 ’2:8 的 中 1.210 円
+フォ - メ -ション
+2026 年 06 月 05 日 る 100 円
+船橋 8R 馬 1:3 ( 衝 100 同
+ワイ ド 二 8 的 中 530 円
+- メ -ション
+[SPAT4 表領域補助OCR]
+2026年06月05日
+. (各100円)
+船橋8R 回癌 100円
+馬複 知人 的中 1.210円
+フォ-メ-ション
+2026年06月05日
+. (各100円)
+船橋8R 5 100円
+に m2: 的中 _530円
+フォ-メ-ション`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4June5OcrPatterns).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "8R", betType: "馬複", selection: "1:3 / 2:8", ticketType: "フォーメーション", stake: 100, payout: 1210 },
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "8R", betType: "ワイド", selection: "1:3 / 2:8", ticketType: "フォーメーション", stake: 100, payout: 530 }
+  ]
+);
+
+const spat4SingleFormationWithBrokenTrack = `受付 番号 0002
+受付 日 時 2026 年 06 月 05 日 18:48
+購入 件 数 1 件
+2026 年 06 月 05 日
+) 橋 9R 馬 1:4 ( 各 100 円 )
+i = 馬 2:5 100 円
+フォ - メ -ション
+[SPAT4 表領域補助OCR]
+2026年06月05日
+答橋9R 馬1:4 (各100円)
+ワイド 馬2:5 100円
+フォ-メ-ション`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleFormationWithBrokenTrack).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "9R", betType: "ワイド", selection: "1:4 / 2:5", ticketType: "フォーメーション", stake: 100, payout: 0 }
+  ]
+);
+
+const spat4SingleAndExactaFormation = `受付 番号 0003
+受付 日 時 2026 年 06 月 05 日 19:34
+購入 件 数 2 件
+2026 年 06 月 05 日
+船橋 10R 6 300 円
+単勝
+通常
+2026 年 06 月 05 日
+j 橋 10R 1 着 :6 ( 各 100 円 )
+jik 0 2 着 :7 100 円
+フォ - メ -ション
+[SPAT4 表領域補助OCR]
+2026年06月05日
+船橋10R 6 300円
+単勝
+世常
+2026年06月05日
+船橋10R 1着:6 (各100円)
+馬単 2着:7 100円
+フォ-メ-ション`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleAndExactaFormation).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "10R", betType: "単勝", selection: "6", ticketType: "通常", stake: 300, payout: 0 },
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "10R", betType: "馬単", selection: "1着:6 / 2着:7", ticketType: "フォーメーション", stake: 100, payout: 0 }
+  ]
+);
+
+const spat4DuplicatedSupplementRows = `受付 番号 0004
+受付 日 時 2026 年 06 月 05 日 19:54
+購入 件 数 2 件
+2026 年 06 月 05 日
+j 橋 11R 馬 1:3 ( 各 100 円 )
+dit 馬 2:9 100 円
+フォ - メ -ション
+2026 年 06 月 05 日
+j 栓 11R 馬 1:3 ( 各 300 円 )
+店 ド 馬 2:9 300 円
+フォ - メ -ション
+[SPAT4 表領域補助OCR]
+2026年06月05日
+船橋11R 馬1:3 (各100円)
+馬複 馬2:9 100円
+JxA—AX—=23V
+2026年06月05日
+船橋11R 馬1:3 (各300円)
+T4K 馬2:9 300円
+JxA—X—=>3V
+2026年06月05日
+船橋11R 馬1:3 (各100円)
+馬複 馬2:9 100円`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4DuplicatedSupplementRows).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "11R", betType: "馬複", selection: "1:3 / 2:9", ticketType: "フォーメーション", stake: 100, payout: 0 },
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "11R", betType: "ワイド", selection: "1:3 / 2:9", ticketType: "フォーメーション", stake: 300, payout: 0 }
+  ]
+);
+
+const spat4SingleWinBrokenSupplement = `受付 番号 0005
+受付 日 時 2026 年 06 月 05 日 20:00
+購入 件 数 1 件
+2026 年 06 月 05 日
+船橋 11R 4 100 円
+単勝
+通常
+[SPAT4 表領域補助OCR]
+2026年06月05日
+船橋11R 4 100円
+単勝
+世常
+レ-ス/式別 馬/組番 投票金額
+2026年06月05日
+4 100MH
+単勝`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleWinBrokenSupplement).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "11R", betType: "単勝", selection: "4", ticketType: "通常", stake: 100, payout: 0 }
+  ]
+);
+
+const spat4SingleWideFormation = `受付 番号 0006
+受付 日 時 2026 年 06 月 05 日 20:45
+購入 件 数 1 件
+2026 年 06 月 05 日
+船橋 12R 馬 1:6 ( 各 500 円 )
+ワイ ド 馬 2:9 500 円
+フォ - メ -ション
+[SPAT4 表領域補助OCR]
+2026年06月05日
+船橋12R 馬1:6 (各500円)
+ワイド 馬2:9 500円
+レ-ス/式別 馬/組番 投票金額
+2026年06月05日
+馬1:6 (各500円)
+ワイド 馬2:9 500円`;
+
+assert.deepEqual(
+  plain(parser.parseSpat4Entries(spat4SingleWideFormation).map(({ raceDate, track, raceNumber, betType, selection, ticketType, stake, payout }) => ({
+    raceDate,
+    track,
+    raceNumber,
+    betType,
+    selection,
+    ticketType,
+    stake,
+    payout
+  }))),
+  [
+    { raceDate: "2026-06-05", track: "船橋", raceNumber: "12R", betType: "ワイド", selection: "1:6 / 2:9", ticketType: "フォーメーション", stake: 500, payout: 0 }
+  ]
+);
+
 const candidates = parser.parseTextToCandidates(`--- ipat-1.jpg ---
 ${noisyIpat}
 --- ipat-2.jpg ---
