@@ -61,6 +61,18 @@ const BET_TYPES = ["三連単", "三連複", "3連単", "3連複", "ワイド", 
 const TICKET_TYPES = ["フォーメーション", "軸2頭流し", "ボックス", "流し", "通常"];
 const TRACK_PATTERN = TRACK_NAMES.join("|");
 const IPAT_TRACK_PATTERN = IPAT_TRACK_NAMES.join("|");
+const SPAT4_TRACK_ALIASES = [
+  [/j\s*橋|j\s*栓|j橋|j栓|答橋|褒橋|\)橋/g, "船橋"]
+];
+const SPAT4_BET_TYPE_ALIASES = [
+  { type: "ワイド", patterns: [/ワイ\s*ド/, /i\s*=+/, /店\s*ド/] },
+  { type: "馬複", patterns: [/馬\s*複/, /T4K/, /dit/, /知人/] },
+  { type: "馬単", patterns: [/馬\s*単/, /jik\s*0/, /1着[:：].*2着[:：]/] },
+  { type: "単勝", patterns: [/単\s*勝/] },
+  { type: "複勝", patterns: [/複\s*勝/] },
+  { type: "三連複", patterns: [/三\s*連\s*複/, /3\s*連\s*複/] },
+  { type: "三連単", patterns: [/三\s*連\s*単/, /3\s*連\s*単/] }
+];
 
 function loadRecords() {
   try {
@@ -184,6 +196,81 @@ function normalizeText(text) {
     .trim();
 }
 
+function normalizeSpat4OcrText(text) {
+  let normalized = normalizeText(text)
+    .replace(/衝/g, "各")
+    .replace(/_([0-9]{2,})/g, "$1")
+    .replace(/([0-9])\.([0-9]{3})(?=\s*円)/g, "$1$2")
+    .replace(/([0-9])_([0-9]{2,})(?=\s*円)/g, "$1$2")
+    .replace(/(各\s*[0-9]{2,})\s*同/g, "$1円")
+    .replace(/([0-9一二三四五六七八九])\s+([0-9一二三四五六七八九])(?=\s*的中)/g, "$1:$2");
+
+  for (const [pattern, replacement] of SPAT4_TRACK_ALIASES) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  return normalized;
+}
+
+function parseOcrAmountToken(value) {
+  const digits = normalizeAmountDigits(value).replace(/[._]/g, "");
+  const match = digits.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function toAsciiDigit(value) {
+  return String(value || "")
+    .replace(/[一壱]/g, "1")
+    .replace(/[二弐]/g, "2")
+    .replace(/[三参]/g, "3")
+    .replace(/[四]/g, "4")
+    .replace(/[五]/g, "5")
+    .replace(/[六]/g, "6")
+    .replace(/[七]/g, "7")
+    .replace(/[八]/g, "8")
+    .replace(/[九]/g, "9")
+    .replace(/[〇零]/g, "0");
+}
+
+function normalizeSelectionGroup(value, { label = "" } = {}) {
+  const normalized = toAsciiDigit(String(value || ""))
+    .replace(/[’'`´]/g, "")
+    .replace(/[：]/g, ":")
+    .replace(/[、]/g, ",")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s*-\s*/g, "-");
+
+  if (!normalized) return "";
+
+  let token = normalized;
+  if (["馬", "1着", "2着", "3着"].includes(label)) {
+    token = token.replace(/^([0-9]{1,2}:[0-9]{1,2})\s+\d+$/, "$1");
+    token = token.replace(/^([0-9]{1,2})\s+([0-9]{1,2})$/, "$1:$2");
+    token = token.replace(/^([0-9]{1,2}):([0-9]{3})$/, (_, left, right) => `${left}:${right.slice(0, 2)}`);
+  } else {
+    token = token.replace(/\s+/g, ",");
+  }
+
+  return token
+    .replace(/(^[,:.-]+|[,:.-]+$)/g, "")
+    .replace(/\s+/g, "");
+}
+
+function detectSpat4BetType(text) {
+  const compact = compactText(text);
+  const exact = firstMatch(compact, [new RegExp(`(${BET_TYPES.join("|")})`)]);
+  if (exact) return exact;
+
+  for (const { type, patterns } of SPAT4_BET_TYPE_ALIASES) {
+    if (patterns.some((pattern) => pattern.test(text) || pattern.test(compact))) {
+      return type;
+    }
+  }
+
+  return "";
+}
+
 function parseJapaneseDate(dateText) {
   const match = dateText.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
   if (!match) return "";
@@ -200,8 +287,8 @@ function parseJapaneseDateTime(text) {
 
 function parseYen(value) {
   if (!value) return 0;
-  const match = String(value).replace(/,/g, "").match(/(\d+)\s*(?:円|四|囚|口)/);
-  return match ? Number(match[1]) : 0;
+  const match = String(value).match(/([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)/);
+  return match ? parseOcrAmountToken(match[1]) : 0;
 }
 
 function debugAmountExtraction(field, value, source, extra = {}) {
@@ -322,7 +409,7 @@ function normalizeAmountDigits(value) {
   return String(value || "")
     .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/[OoＯｏ〇○]/g, "0")
-    .replace(/[,\s]/g, "");
+    .replace(/[,_.\s]/g, "");
 }
 
 function parseIpatAmount(value) {
@@ -353,7 +440,7 @@ function emptySpat4Entry() {
 }
 
 function parseSpat4Entries(rawText) {
-  const text = normalizeText(rawText);
+  const text = normalizeSpat4OcrText(rawText);
   const supplementMarker = "[SPAT4 表領域補助OCR]";
   const supplementIndex = text.indexOf(supplementMarker);
   if (supplementIndex >= 0) {
@@ -389,11 +476,17 @@ function parseSpat4Entries(rawText) {
     acceptedAt: parseJapaneseDateTime(acceptedAt),
     raceDate: parseJapaneseDate(raceDateText || acceptedAt)
   };
+  const purchaseCount = parseSpat4PurchaseCount(text);
 
   const formationSections = parseSpat4FormationSections(lines, common);
-  if (formationSections.length) return formationSections;
-
   const dateSections = parseSpat4DateSections(lines, common);
+  if (formationSections.length) {
+    const combinedSections = coalesceSpat4Entries([...dateSections, ...formationSections]);
+    if (!purchaseCount || combinedSections.length >= purchaseCount) {
+      return purchaseCount ? combinedSections.slice(0, purchaseCount) : combinedSections;
+    }
+    return formationSections;
+  }
   if (
     dateSections.length > 1
     || dateSections.some((entry) => ["軸2頭流し", "流し"].includes(entry.ticketType))
@@ -403,10 +496,8 @@ function parseSpat4Entries(rawText) {
   if (parsedTickets.length) return parsedTickets;
 
   const raceMatch = compact.match(new RegExp(`(${TRACK_PATTERN})(\\d{1,2})R`, "i"));
-  const betType = firstMatch(compact, [
-    new RegExp(`(${BET_TYPES.join("|")})`)
-  ]);
-  const ticketType = firstMatch(compact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
+  const betType = detectSpat4BetType(compact);
+  const ticketType = normalizeSpat4TicketType(compact);
 
   const payout = parsePayout(joined, compact);
   const stake = parseStake(lines, joined, payout);
@@ -435,7 +526,11 @@ function findSpat4Race(text) {
 
 function normalizeSpat4TicketType(text) {
   const compact = compactText(text);
-  if (/フォ[-ー]?メ[-ー]?ション/.test(compact)) return "フォーメーション";
+  if (/フォ[-ー]?メ[-ー]?ション|[-ー]?メ[-ー]?ション/.test(compact)) return "フォーメーション";
+  if (/軸2頭流し/.test(compact)) return "軸2頭流し";
+  if (/流し/.test(compact)) return "流し";
+  if (/ボックス|クス/.test(compact)) return "ボックス";
+  if (/通常|世常|通吊/.test(compact)) return "通常";
   return firstMatch(compact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
 }
 
@@ -492,9 +587,10 @@ function mergeSpat4Entry(primary, supplement) {
 }
 
 function mergeSpat4SupplementEntries(primaryEntries, supplementalEntries, purchaseCount = 0) {
-  const merged = primaryEntries.map((entry) => ({ ...entry }));
+  const merged = coalesceSpat4Entries(primaryEntries.map((entry) => ({ ...entry })));
+  const normalizedSupplements = coalesceSpat4Entries(supplementalEntries);
 
-  for (const supplement of supplementalEntries) {
+  for (const supplement of normalizedSupplements) {
     const matches = merged
       .map((entry, index) => ({ index, score: spat4EntrySimilarity(entry, supplement) }))
       .filter(({ score }) => score >= 3)
@@ -509,25 +605,71 @@ function mergeSpat4SupplementEntries(primaryEntries, supplementalEntries, purcha
     }
   }
 
-  return purchaseCount ? merged.slice(0, purchaseCount) : merged;
+  return purchaseCount ? coalesceSpat4Entries(merged).slice(0, purchaseCount) : coalesceSpat4Entries(merged);
+}
+
+function coalesceSpat4Entries(entries) {
+  const merged = [];
+
+  for (const entry of entries) {
+    const existingIndex = merged.findIndex((current) => (
+      current.raceDate === entry.raceDate
+      && current.track === entry.track
+      && current.raceNumber === entry.raceNumber
+      && current.ticketType === entry.ticketType
+      && current.selection === entry.selection
+      && current.stake === entry.stake
+      && current.payout === entry.payout
+      && current.refund === entry.refund
+    ));
+
+    if (existingIndex >= 0) {
+      merged[existingIndex] = mergeSpat4Entry(merged[existingIndex], entry);
+    } else {
+      merged.push({ ...entry });
+    }
+  }
+
+  return merged.map((entry) => {
+    if (entry.betType || !entry.selection) return entry;
+    const sibling = merged.find((other) => (
+      other !== entry
+      && other.track === entry.track
+      && other.raceNumber === entry.raceNumber
+      && other.ticketType === entry.ticketType
+      && other.selection === entry.selection
+      && other.betType
+    ));
+    return sibling ? { ...entry, betType: sibling.betType } : entry;
+  });
 }
 
 function parseFormationSelection(text) {
-  const normalized = normalizeText(text);
-  const selections = [...normalized.matchAll(/馬\s*([0-9][0-9:.,-]*)/g)]
-    .map((match) => match[1].replace(/\.$/, ""))
-    .filter(Boolean);
+  const selections = [];
+
+  for (const line of normalizeText(text).split("\n")) {
+    for (const match of line.matchAll(/(馬|軸|1着|2着|3着)\s*[:：]?\s*([0-9一二三四五六七八九][0-9一二三四五六七八九:：.,、\- ]*)/g)) {
+      const label = match[1];
+      const rawSelection = match[2]
+        .replace(/\s*(?:\(|各|円|的中).*$/, "")
+        .replace(/\s+\d+$/, "");
+      const selection = normalizeSelectionGroup(rawSelection, { label });
+      if (!selection) continue;
+      selections.push(["軸", "1着", "2着", "3着"].includes(label) ? `${label}:${selection}` : selection);
+    }
+  }
+
   return [...new Set(selections)].join(" / ");
 }
 
 function normalizeSpat4NumberList(value) {
-  const numbers = String(value || "").match(/\d{1,2}/g) || [];
+  const numbers = normalizeSelectionGroup(value).match(/\d{1,2}/g) || [];
   return numbers.join(",");
 }
 
 function parseSpat4SectionSelection(text, race, betType, stake) {
   const normalized = normalizeText(text);
-  const axisMatch = normalized.match(/軸\s*[:：]?\s*([0-9][0-9,.\-\s]*)\s*\(/);
+  const axisMatch = normalized.match(/軸\s*[:：]?\s*([0-9一二三四五六七八九][0-9一二三四五六七八九,.\-\s]*)\s*\(/);
   const axis = normalizeSpat4NumberList(axisMatch?.[1]);
 
   if (axis && betType) {
@@ -536,6 +678,24 @@ function parseSpat4SectionSelection(text, race, betType, stake) {
     const beforeStake = stake ? afterBet.replace(new RegExp(`${stake}\\s*円[\\s\\S]*$`), "") : afterBet;
     const targets = normalizeSpat4NumberList(beforeStake);
     return targets ? `軸:${axis} / ${targets}` : `軸:${axis}`;
+  }
+
+  if (normalizeSpat4TicketType(text) === "フォーメーション") {
+    const formationSelection = parseFormationSelection(normalized);
+    const pairMatch = normalized.match(/[’']?([一二三四五六七八九0-9])\s*[:：.\-]?\s*([一二三四五六七八九0-9])\s*(?=的\s*中)/);
+    const pairSelection = pairMatch ? normalizeSelectionGroup(`${pairMatch[1]}:${pairMatch[2]}`, { label: "馬" }) : "";
+    if (formationSelection) {
+      const selections = formationSelection.split(" / ").filter(Boolean);
+      if (pairSelection && !selections.includes(pairSelection)) selections.push(pairSelection);
+      return selections.join(" / ");
+    }
+    if (pairSelection) return pairSelection;
+    return "";
+  }
+
+  if (stake) {
+    const stakeSelection = normalized.match(new RegExp(`\\d{1,2}R\\s*([0-9]{1,2})\\s*${stake}\\s*円`));
+    if (stakeSelection?.[1]) return stakeSelection[1];
   }
 
   if (race?.track) {
@@ -551,24 +711,45 @@ function parseSpat4SectionStake(lines, betType, payout) {
   const ranked = [];
   for (const line of lines) {
     if (isExcludedAmountLine(line) || /的\s*中|返\s*還/.test(line)) continue;
-    const amounts = [...line.matchAll(/(\d{2,})\s*円/g)].map((match) => Number(match[1]));
+    const amounts = [...line.matchAll(/([0-9OoＯo・･._,]{2,})\s*円/g)].map((match) => parseOcrAmountToken(match[1]));
     for (const amount of amounts) {
-      if (amount === payout) continue;
+      if (!amount || amount === payout) continue;
       ranked.push({
         amount,
         priority: (betType && compactText(line).includes(betType) ? 4 : 0)
           + (/\d{1,2}\s*R/i.test(line) ? 2 : 0)
-          - (/各\s*\d{2,}\s*円/.test(line) ? 1 : 0)
+          + (/各\s*[0-9]/.test(line) ? 1 : 0)
+          - (/各\s*[0-9OoＯo・･._,]{2,}\s*円/.test(line) ? 1 : 0)
       });
     }
   }
   return ranked.sort((left, right) => right.priority - left.priority)[0]?.amount || 0;
 }
 
+function collectSpat4SectionStarts(lines) {
+  const starts = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const date = parseJapaneseDate(line);
+    const race = findSpat4Race(line);
+
+    if (date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line)) {
+      starts.push({ index, date });
+      continue;
+    }
+
+    if (!race) continue;
+    const previous = starts[starts.length - 1];
+    if (previous && previous.index === index - 1 && previous.date) continue;
+    starts.push({ index, date: "" });
+  }
+
+  return starts;
+}
+
 function parseSpat4DateSections(lines, common) {
-  const starts = lines
-    .map((line, index) => ({ line, index, date: parseJapaneseDate(line) }))
-    .filter(({ line, date }) => date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line));
+  const starts = collectSpat4SectionStarts(lines);
   if (!starts.length) return [];
 
   const uniqueRaces = [...new Map(
@@ -579,7 +760,7 @@ function parseSpat4DateSections(lines, common) {
   ).values()];
   const fallbackRace = uniqueRaces.length === 1 ? uniqueRaces[0] : null;
 
-  return starts.flatMap((start, sectionIndex) => {
+  const entries = starts.flatMap((start, sectionIndex) => {
     const end = starts[sectionIndex + 1]?.index ?? lines.length;
     const sectionLines = lines.slice(start.index, end);
     const sectionText = sectionLines.join(" ");
@@ -587,7 +768,7 @@ function parseSpat4DateSections(lines, common) {
     const race = findSpat4Race(sectionText) || fallbackRace;
     if (!race) return [];
 
-    const betType = firstMatch(compact, [new RegExp(`(${BET_TYPES.join("|")})`)]);
+    const betType = detectSpat4BetType(sectionText);
     const payout = parsePayout(sectionText, compact);
     const stake = parseSpat4SectionStake(sectionLines, betType, payout);
     if (!stake) return [];
@@ -605,12 +786,12 @@ function parseSpat4DateSections(lines, common) {
       refund: parseRefund(sectionText)
     }];
   });
+
+  return coalesceSpat4Entries(entries);
 }
 
 function parseSpat4FormationSections(lines, common) {
-  const starts = lines
-    .map((line, index) => ({ line, index, date: parseJapaneseDate(line) }))
-    .filter(({ line, date }) => date && !/\d{1,2}\s*[:：]\s*\d{2}/.test(line));
+  const starts = collectSpat4SectionStarts(lines);
   if (!starts.length) return [];
 
   const uniqueRaces = [...new Map(
@@ -621,12 +802,12 @@ function parseSpat4FormationSections(lines, common) {
   ).values()];
   const fallbackRace = uniqueRaces.length === 1 ? uniqueRaces[0] : null;
 
-  return starts.flatMap((start, sectionIndex) => {
+  const entries = starts.flatMap((start, sectionIndex) => {
     const end = starts[sectionIndex + 1]?.index ?? lines.length;
     const sectionLines = lines.slice(start.index, end);
     const sectionText = sectionLines.join(" ");
     const compact = compactText(sectionText);
-    const stakeMatch = compact.match(/各(\d{2,})円/);
+    const stakeMatch = compact.match(/各([0-9OoＯo・･._,]{2,})円/);
     if (!stakeMatch) return [];
     if (normalizeSpat4TicketType(sectionText) !== "フォーメーション") return [];
 
@@ -638,14 +819,16 @@ function parseSpat4FormationSections(lines, common) {
       raceDate: start.date || common.raceDate,
       track: race.track,
       raceNumber: race.raceNumber,
-      betType: firstMatch(compact, [new RegExp(`(${BET_TYPES.join("|")})`)]),
-      selection: parseFormationSelection(sectionText),
+      betType: detectSpat4BetType(sectionText),
+      selection: parseSpat4SectionSelection(sectionText, race, detectSpat4BetType(sectionText), parseOcrAmountToken(stakeMatch[1])),
       ticketType: normalizeSpat4TicketType(sectionText),
-      stake: Number(stakeMatch[1]),
+      stake: parseOcrAmountToken(stakeMatch[1]),
       payout: parsePayout(sectionText, compact),
       refund: parseRefund(sectionText)
     }];
   });
+
+  return coalesceSpat4Entries(entries);
 }
 
 function parseIpatRaceLine(line) {
@@ -784,8 +967,8 @@ function parseTicketRows(lines, common) {
 
     const lookahead = lines.slice(index + 1, index + 5);
     const lookaheadCompact = compactText(lookahead.join(" "));
-    const betType = firstMatch(lookaheadCompact, [new RegExp(`(${BET_TYPES.join("|")})`)]);
-    const ticketType = firstMatch(lookaheadCompact, [new RegExp(`(${TICKET_TYPES.join("|")})`)]);
+    const betType = detectSpat4BetType(lookahead.join(" "));
+    const ticketType = normalizeSpat4TicketType(lookahead.join(" "));
     const payout = parsePayout(lookahead.join(" "), lookaheadCompact);
     const refund = parseRefund(lookahead.join(" "));
 
@@ -865,18 +1048,18 @@ function parseTicketLine(line) {
 }
 
 function parsePayout(joined, compact) {
-  const hitMatch = compact.match(/的中\s*(\d{2,})\s*(?:円|四|囚|口)/);
+  const hitMatch = compact.match(/的中\s*([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)/);
   if (hitMatch) {
-    const value = Number(hitMatch[1]);
+    const value = parseOcrAmountToken(hitMatch[1]);
     debugAmountExtraction("payout", value, hitMatch[0], { parser: "parsePayout" });
     return value;
   }
 
   const hitIndex = joined.search(/的\s*中|的中/);
   if (hitIndex >= 0) {
-    const matched = joined.slice(hitIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/);
+    const matched = joined.slice(hitIndex).match(/([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)/);
     if (matched) {
-      const value = parseYen(matched[0]);
+      const value = parseOcrAmountToken(matched[1]);
       debugAmountExtraction("payout", value, matched[0], { parser: "parsePayout.joined" });
       return value;
     }
@@ -887,9 +1070,9 @@ function parsePayout(joined, compact) {
 function parseRefund(joined) {
   const refundIndex = joined.search(/返還/);
   if (refundIndex < 0) return 0;
-  const matched = joined.slice(refundIndex).match(/(\d{2,})\s*(?:円|四|囚|口)/);
+  const matched = joined.slice(refundIndex).match(/([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)/);
   if (matched) {
-    const value = parseYen(matched[0]);
+    const value = parseOcrAmountToken(matched[1]);
     debugAmountExtraction("refund", value, matched[0], { parser: "parseRefund" });
     return value;
   }
@@ -902,8 +1085,8 @@ function parseStake(lines, joined, payout) {
     if (isExcludedAmountLine(line)) continue;
     if (/的中|返還/.test(line)) continue;
 
-    const matches = [...line.matchAll(/(\d{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
-      value: Number(match[1]),
+    const matches = [...line.matchAll(/([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
+      value: parseOcrAmountToken(match[1]),
       source: match[0],
       index: match.index
     }));
@@ -935,8 +1118,8 @@ function parseStake(lines, joined, payout) {
     }
   }
 
-  const fallbackMatches = [...joined.matchAll(/(\d{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
-    value: Number(match[1]),
+  const fallbackMatches = [...joined.matchAll(/([0-9OoＯo・･._,]{2,})\s*(?:円|四|囚|口)(?!\d)/g)].map((match) => ({
+    value: parseOcrAmountToken(match[1]),
     source: match[0],
     index: match.index
   }));
