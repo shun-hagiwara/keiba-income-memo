@@ -102,6 +102,24 @@
       "question_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt8000000g6fw-att/2016h28a_sc_pm2_qs.pdf",
       "answer_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt8000000g6fw-att/2016h28a_sc_pm2_ans.pdf",
       "source": "IPA独立行政法人情報処理推進機構"
+    },
+    {
+      "id": "2022h2",
+      "year": 2022,
+      "term": "春",
+      "exam": "午後Ⅱ",
+      "question_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000009sgk-att/2022r04h_sc_pm2_qs.pdf",
+      "answer_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000009sgk-att/2022r04h_sc_pm2_ans.pdf",
+      "source": "IPA独立行政法人情報処理推進機構"
+    },
+    {
+      "id": "2022a2",
+      "year": 2022,
+      "term": "秋",
+      "exam": "午後Ⅱ",
+      "question_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000008smf-att/2022r04a_sc_pm2_qs.pdf",
+      "answer_pdf": "https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000008smf-att/2022r04a_sc_pm2_ans.pdf",
+      "source": "IPA独立行政法人情報処理推進機構"
     }
   ],
   "cards": [
@@ -542,7 +560,7 @@
     {
       "id": "priority-oidc",
       "kind": "priority",
-      "paper_id": "2021h1",
+      "paper_id": "2022h2",
       "location": "過去問の学習内容を横断した独自復習（原題の短答ではない）",
       "ipa_answer": "",
       "question": "認可コード・アクセストークン・IDトークンは何が違う？",
@@ -556,7 +574,7 @@
     {
       "id": "priority-state",
       "kind": "priority",
-      "paper_id": "2020o2",
+      "paper_id": "2022h2",
       "location": "過去問の学習内容を横断した独自復習（原題の短答ではない）",
       "ipa_answer": "",
       "question": "state・PKCE・nonceは誰がいつ検証する？",
@@ -584,7 +602,7 @@
     {
       "id": "priority-arp",
       "kind": "priority",
-      "paper_id": "2021h1",
+      "paper_id": "2022a2",
       "location": "過去問の学習内容を横断した独自復習（原題の短答ではない）",
       "ipa_answer": "",
       "question": "ARPスプーフィングでIPとMACはどうなる？",
@@ -598,7 +616,7 @@
     {
       "id": "priority-ticket",
       "kind": "priority",
-      "paper_id": "2020o2",
+      "paper_id": "2022h2",
       "location": "過去問の学習内容を横断した独自復習（原題の短答ではない）",
       "ipa_answer": "",
       "question": "KerberosのSTのオフライン総当たりとは？",
@@ -612,7 +630,7 @@
     {
       "id": "priority-sni",
       "kind": "priority",
-      "paper_id": "2019a1",
+      "paper_id": "2022h2",
       "location": "過去問の学習内容を横断した独自復習（原題の短答ではない）",
       "ipa_answer": "",
       "question": "HTTPSのSNIとHostヘッダはなぜ2つある？",
