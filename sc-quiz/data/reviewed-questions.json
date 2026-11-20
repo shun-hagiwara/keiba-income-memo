@@ -169,36 +169,6 @@
   ],
   "cards": [
     {
-      "id": "18a-canary",
-      "kind": "short",
-      "paper_id": "2018a1",
-      "location": "問1 設問2(1) e",
-      "ipa_answer": "canary",
-      "question": "SSPでスタック上に置き、破壊されていないか調べる値は？",
-      "explanation": "関数の開始時に番人の値を置く。戻る直前に値が変わっていたらバッファオーバフローを疑って止める。",
-      "diagram": "関数開始→canaryを配置→処理→canary比較→変化なら停止",
-      "contrast": "ASLRはアドレスを乱数化。DEPはデータ領域の実行を禁止。",
-      "memory": "canary＝炭鉱のカナリア。異変を知らせる番人。",
-      "formal": "canary（スタックカナリア）",
-      "question_mode": "IPA原題の用語・字句穴埋めまたは名称解答",
-      "rendering": "学習用に設問の文脈を短く再構成（原文引用ではない）"
-    },
-    {
-      "id": "18a-aslr",
-      "kind": "short",
-      "paper_id": "2018a1",
-      "location": "問1 設問2(1) f",
-      "ipa_answer": "ASLR",
-      "question": "メモリ上の配置アドレスを実行ごとにランダム化する技術は？",
-      "explanation": "攻撃者が『攻撃用コードはこの番地』と決め打ちできなくする。スタック・ヒープ・ライブラリなどの位置を乱す。",
-      "diagram": "プログラム起動→配置アドレスをランダム化→攻撃者の予測が外れる",
-      "contrast": "PIEは実行ファイル本体の配置にもランダム化を適用できる形。DEPは実行禁止。",
-      "memory": "Address Space Layout Randomization＝アドレス空間の配置を乱す。",
-      "formal": "Address Space Layout Randomization",
-      "question_mode": "IPA原題の用語・字句穴埋めまたは名称解答",
-      "rendering": "学習用に設問の文脈を短く再構成（原文引用ではない）"
-    },
-    {
       "id": "18a-cvss",
       "kind": "short",
       "paper_id": "2018a1",
@@ -975,7 +945,7 @@
       "rendering": "ChatGPTによる復習用まとめ。IPA公式の設問ではない。"
     }
   ],
-  "selection_policy": "選択肢記号のみの問題、長文理由問題、Webアプリのソースコードを読む問題、コマンド／プログラム読解を中心とする問題は除外。元から用語・名称・短い字句を解答する問題を採用。学習用の文面は要約であり原題そのものではない。",
+  "selection_policy": "元から用語・名称・短い字句を回答する設問のうち、ソースコードやプログラム動作の読解が必要な問題を除外。Web系のコード読解、C言語のメモリ操作例、シェル/コマンドの読解を中心とする設問、選択肢記号のみの設問、長文記述設問は短答に採用しない。",
   "audit": {
     "reviewed_on": "2026-11-20",
     "removed": [
@@ -994,6 +964,14 @@
       {
         "id": "20o-sp",
         "answer": "SP"
+      },
+      {
+        "id": "18a-canary",
+        "answer": "canary"
+      },
+      {
+        "id": "18a-aslr",
+        "answer": "ASLR"
       }
     ],
     "relocated": [
